@@ -1,0 +1,3 @@
+
+rootProject.name = 'hstream-testing'
+include('app')

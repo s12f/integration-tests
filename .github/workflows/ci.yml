@@ -1,0 +1,35 @@
+name: Java CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  repository_dispatch:
+    branches: [main]
+    types: image_updated
+
+jobs:
+  java-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        distribution: ["adopt"]
+        java-version: [11]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: check code format
+        uses: axel-op/googlejavaformat-action@v3
+        with:
+          version: "1.10.0"
+          skipCommit: true
+          args: "--set-exit-if-changed"
+
+      - uses: actions/setup-java@v2
+        with:
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.java-version }}
+      - uses: gradle/wrapper-validation-action@v1
+      - run: ./gradlew build
