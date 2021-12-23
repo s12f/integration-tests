@@ -51,10 +51,10 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
       hservers[i] = makeHServer(network, dataDir, zkHost, hstoreHost, i);
       hservers[i].start();
 
-      Thread.sleep(1000);
-      String logs = hservers[0].getLogs();
-      System.out.println(logs.substring(logs.indexOf("rank")));
+      String logs = hservers[i].getLogs();
+      System.out.println(logs);
     }
+    Thread.sleep(100);
 
     Object testInstance = context.getRequiredTestInstance();
     testInstance
@@ -65,7 +65,6 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
         .getClass()
         .getMethod("setHServers", GenericContainer[].class)
         .invoke(testInstance, (Object) hservers);
-    Thread.sleep(5000);
   }
 
   @Override
