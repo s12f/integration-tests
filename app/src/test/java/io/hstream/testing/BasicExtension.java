@@ -18,11 +18,12 @@ public class BasicExtension implements BeforeEachCallback, AfterEachCallback {
   private GenericContainer<?> zk;
   private GenericContainer<?> hstore;
   private GenericContainer<?> hserver;
+  private Network.NetworkImpl network;
 
   @Override
   public void beforeEach(ExtensionContext context) throws Exception {
     dataDir = Files.createTempDirectory("hstream");
-    Network.NetworkImpl network = Network.builder().build();
+    network = Network.builder().build();
 
     zk = makeZooKeeper(network);
     zk.start();
@@ -47,12 +48,12 @@ public class BasicExtension implements BeforeEachCallback, AfterEachCallback {
 
     hserver = makeHServer(network, dataDir, zkHost, hstoreHost, 0);
     hserver.start();
+    Thread.sleep(1000);
     Object testInstance = context.getRequiredTestInstance();
     testInstance
         .getClass()
         .getMethod("setHStreamDBUrl", String.class)
         .invoke(testInstance, "127.0.0.1:" + 6570);
-    Thread.sleep(5000);
   }
 
   @Override
@@ -60,10 +61,12 @@ public class BasicExtension implements BeforeEachCallback, AfterEachCallback {
     hserver.close();
     hstore.close();
     zk.close();
+    network.close();
 
     hserver = null;
     hstore = null;
     zk = null;
+    network = null;
     dataDir = null;
   }
 }

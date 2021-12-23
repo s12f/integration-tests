@@ -19,11 +19,12 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
   private Path dataDir;
   private GenericContainer<?> zk;
   private GenericContainer<?> hstore;
+  private Network.NetworkImpl network;
 
   @Override
   public void beforeEach(ExtensionContext context) throws Exception {
     dataDir = Files.createTempDirectory("hstream");
-    Network.NetworkImpl network = Network.builder().build();
+    network = Network.builder().build();
 
     zk = makeZooKeeper(network);
     zk.start();
@@ -75,13 +76,14 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
     }
     hstore.close();
     zk.close();
+    network.close();
 
     for (int i = 0; i < 5; i++) {
       hservers[i] = null;
     }
     hstore = null;
-    System.out.println(zk.getLogs(OutputType.STDOUT));
     zk = null;
+    network = null;
     dataDir = null;
   }
 }
