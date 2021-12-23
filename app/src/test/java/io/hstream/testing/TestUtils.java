@@ -94,13 +94,14 @@ public class TestUtils {
             "-c",
             " hstream-server"
                 + " --host "
-                + addr
+                + "$(hostname -I | cut -f1 -d' ')"
                 + " --port "
                 + String.valueOf(port + serverId)
                 + " --internal-port "
                 + String.valueOf(internalPort)
                 + " --address "
-                + "$(hostname -I | cut -f1 -d' ')"
+                + addr
+                // + "$(hostname -I | cut -f1 -d' ')"
                 + " --server-id "
                 + String.valueOf(serverId)
                 + " --zkuri "
