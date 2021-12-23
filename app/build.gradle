@@ -4,6 +4,15 @@ plugins {
 
 repositories {
     mavenCentral()
+    maven {
+        url 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
+    }
+}
+
+
+
+configurations.all {
+    resolutionStrategy.cacheDynamicVersionsFor 10, 'minutes'
 }
 
 dependencies {
@@ -13,7 +22,7 @@ dependencies {
     testImplementation "org.testcontainers:junit-jupiter:1.16.2"
     testImplementation "org.testcontainers:toxiproxy:1.16.2"
 
-    testImplementation 'io.hstream:hstreamdb-java:0.6.0'
+    testImplementation 'io.hstream:hstreamdb-java:0.6.2-SNAPSHOT'
     testImplementation 'com.github.docker-java:docker-java:3.2.12'
 }
 
