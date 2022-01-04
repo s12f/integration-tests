@@ -7,12 +7,13 @@ repositories {
     maven {
         url 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
     }
+    // mavenLocal()
 }
 
 
 
 configurations.all {
-    resolutionStrategy.cacheDynamicVersionsFor 10, 'minutes'
+    resolutionStrategy.cacheDynamicVersionsFor 0, 'minutes'
 }
 
 dependencies {
