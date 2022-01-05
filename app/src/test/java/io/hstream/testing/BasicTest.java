@@ -1,16 +1,47 @@
 package io.hstream.testing;
 
-import static io.hstream.testing.TestUtils.*;
+import static io.hstream.testing.TestUtils.createConsumer;
+import static io.hstream.testing.TestUtils.createConsumerCollectStringPayload;
+import static io.hstream.testing.TestUtils.createConsumerWithFixNumsRecords;
+import static io.hstream.testing.TestUtils.doProduce;
+import static io.hstream.testing.TestUtils.doProduceAndGatherRid;
+import static io.hstream.testing.TestUtils.randStream;
+import static io.hstream.testing.TestUtils.randSubscription;
+import static io.hstream.testing.TestUtils.randSubscriptionFromEarliest;
+import static io.hstream.testing.TestUtils.randSubscriptionWithOffset;
+import static io.hstream.testing.TestUtils.randSubscriptionWithTimeout;
+import static io.hstream.testing.TestUtils.randText;
 
-import io.hstream.*;
-import java.util.*;
+import io.hstream.Consumer;
+import io.hstream.HRecord;
+import io.hstream.HStreamClient;
+import io.hstream.Producer;
+import io.hstream.ReceivedRawRecord;
+import io.hstream.RecordId;
+import io.hstream.Responder;
+import io.hstream.Stream;
+import io.hstream.Subscription;
+import io.hstream.SubscriptionOffset;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.RepeatedTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testcontainers.containers.GenericContainer;
 
@@ -871,6 +902,7 @@ class BasicTest {
     Assertions.assertEquals(expectation, res2);
   }
 
+  @RepeatedTest(10)
   @Test
   void testRedundancyAndUnorderedAck() throws Exception {
     final String streamName = randStream(hStreamClient);
@@ -944,8 +976,6 @@ class BasicTest {
     }
     consumer.stopAsync().awaitTerminated();
     consumer2.stopAsync().awaitTerminated();
-    var log = server.getLogs();
-    System.out.println(log);
     Assertions.assertTrue(done);
     System.out.printf("===========resend: %d\n", i.get());
     System.out.printf(
@@ -1214,7 +1244,6 @@ class BasicTest {
     }
 
     boolean done = signal.await(30, TimeUnit.SECONDS);
-    System.out.println(server.getLogs());
     System.out.println(signal.getCount());
     Assertions.assertTrue(
         done,

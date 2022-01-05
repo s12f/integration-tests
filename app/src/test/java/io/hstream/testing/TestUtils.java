@@ -1,11 +1,21 @@
 package io.hstream.testing;
 
-import io.hstream.*;
+import io.hstream.Consumer;
+import io.hstream.HStreamClient;
+import io.hstream.Producer;
+import io.hstream.ReceivedRawRecord;
+import io.hstream.RecordId;
+import io.hstream.Subscription;
+import io.hstream.SubscriptionOffset;
 import io.hstream.SubscriptionOffset.SpecialOffset;
 import java.io.File;
 import java.io.PrintWriter;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -18,6 +28,7 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
 
 public class TestUtils {
+
   public static String randText() {
     return "test_stream_" + UUID.randomUUID().toString().replace("-", "");
   }
@@ -129,15 +140,12 @@ public class TestUtils {
 
   // -----------------------------------------------------------------------------------------------
 
-  public static String trimMethodName(String methodName) {
-    return methodName.substring(0, methodName.indexOf('('));
-  }
-
-  public static void writeLog(ExtensionContext context, String entryName, String logs)
+  public static void writeLog(ExtensionContext context, String entryName, String grp, String logs)
       throws Exception {
     String testClassName = context.getRequiredTestClass().getSimpleName();
-    String testName = trimMethodName(context.getDisplayName());
-    String fileName = "../.logs/" + testClassName + "/" + testName + "/" + entryName;
+    String testName = context.getTestMethod().get().getName();
+    String fileName = "../.logs/" + testClassName + "/" + testName + "/" + grp + "/" + entryName;
+    System.out.println("[DEBUG]: log to " + fileName);
 
     File file = new File(fileName);
     file.getParentFile().mkdirs();
@@ -149,8 +157,12 @@ public class TestUtils {
   // -----------------------------------------------------------------------------------------------
 
   public static boolean isAscending(List<RecordId> input) {
-    if (input.isEmpty()) return false;
-    if (input.size() == 1) return true;
+    if (input.isEmpty()) {
+      return false;
+    }
+    if (input.size() == 1) {
+      return true;
+    }
 
     for (int i = 1; i < input.size(); i++) {
       if (input.get(i - 1).compareTo(input.get(i)) >= 0) {

@@ -11,7 +11,6 @@ repositories {
 }
 
 
-
 configurations.all {
     resolutionStrategy.cacheDynamicVersionsFor 0, 'minutes'
 }
