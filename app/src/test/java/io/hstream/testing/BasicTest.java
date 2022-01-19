@@ -13,6 +13,7 @@ import static io.hstream.testing.TestUtils.randSubscriptionWithTimeout;
 import static io.hstream.testing.TestUtils.randText;
 import static io.hstream.testing.TestUtils.restartServer;
 
+import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
 import io.hstream.HRecord;
 import io.hstream.HStreamClient;
@@ -37,6 +38,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
@@ -201,9 +203,10 @@ class BasicTest {
   @Timeout(60)
   void testAckedRecordShouldNotReTransAfterServerRestart() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(5).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(5).build();
     var records = doProduceAndGatherRid(producer, 1, 20);
+    producer.close();
 
     CountDownLatch notify = new CountDownLatch(records.size());
     final String subscription = randSubscriptionFromEarliest(hStreamClient, streamName);
@@ -228,9 +231,10 @@ class BasicTest {
     restartServer(server);
     res.clear();
 
-    Producer producer2 =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(10).build();
+    BufferedProducer producer2 =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(10).build();
     records = doProduceAndGatherRid(producer2, 1, 30);
+    producer2.close();
     CountDownLatch notify2 = new CountDownLatch(records.size());
     Consumer consumer2 =
         createConsumer(hStreamClient, subscription, "test-consumer-new", res, notify2, lock);
@@ -392,9 +396,10 @@ class BasicTest {
   @Timeout(60)
   void testWriteRawBatch() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(100).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(100).build();
     var records = doProduce(producer, 128, 100);
+    producer.close();
 
     CountDownLatch notify = new CountDownLatch(records.size());
     final String subscription = randSubscriptionFromEarliest(hStreamClient, streamName);
@@ -416,7 +421,7 @@ class BasicTest {
   void testBatchSizeZero() throws Exception {
     final String streamName = randStream(hStreamClient);
     Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(0).build();
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(0).build();
     var records = doProduce(producer, 128, 100);
 
     CountDownLatch notify = new CountDownLatch(records.size());
@@ -468,8 +473,8 @@ class BasicTest {
   @Timeout(60)
   void testWriteJSONBatch() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(100).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(100).build();
     Random rand = new Random();
     var futures = new CompletableFuture[100];
     var records = new ArrayList<HRecord>();
@@ -480,6 +485,7 @@ class BasicTest {
       records.add(hRec);
     }
     CompletableFuture.allOf(futures).join();
+    producer.close();
 
     CountDownLatch notify = new CountDownLatch(futures.length);
     final String subscription = randSubscriptionFromEarliest(hStreamClient, streamName);
@@ -511,10 +517,10 @@ class BasicTest {
   @Test
   @Timeout(60)
   void testWriteRawBatchMultiThread() throws Exception {
-    Producer producer =
-        hStreamClient.newProducer().stream(randStream(hStreamClient))
-            .enableBatch()
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(randStream(hStreamClient))
             .recordCountLimit(10)
+            .flushIntervalMs(10)
             .build();
     Random rand = new Random();
     final int cnt = 100;
@@ -544,6 +550,7 @@ class BasicTest {
     t1.start();
     t0.join();
     t1.join();
+    producer.close();
     for (int i = 0; i < cnt; i++) {
       Assertions.assertNotNull(futures[i]);
     }
@@ -556,11 +563,8 @@ class BasicTest {
     int totalWrites = 10;
     int batchWrites = 0;
     int batchSize = 5;
-    Producer batchProducer =
-        hStreamClient.newProducer().stream(streamName)
-            .enableBatch()
-            .recordCountLimit(batchSize)
-            .build();
+    BufferedProducer batchProducer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(batchSize).build();
     Producer producer = hStreamClient.newProducer().stream(streamName).build();
     Random rand = new Random();
     var records = new ArrayList<String>();
@@ -586,6 +590,8 @@ class BasicTest {
         recordIds.add(producer.write(rRec).join());
       }
     }
+
+    batchProducer.close();
 
     CountDownLatch notify =
         new CountDownLatch(batchWrites * batchSize + (totalWrites - batchWrites));
@@ -630,6 +636,81 @@ class BasicTest {
 
   @Test
   @Timeout(60)
+  public void testWriteBatchRawRecordAndClose() throws Exception {
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(randStream(hStreamClient))
+            .recordCountLimit(100)
+            .flushIntervalMs(-1)
+            .build();
+    Random random = new Random();
+    final int count = 10;
+    CompletableFuture<RecordId>[] recordIdFutures = new CompletableFuture[count];
+    for (int i = 0; i < count; ++i) {
+      byte[] rawRecord = new byte[100];
+      random.nextBytes(rawRecord);
+      CompletableFuture<RecordId> future = producer.write(rawRecord);
+      recordIdFutures[i] = future;
+    }
+    // flush and close producer
+    producer.close();
+    CompletableFuture.allOf(recordIdFutures).join();
+  }
+
+  @Test
+  @Timeout(60)
+  public void testWriteBatchRawRecordBasedTimer() throws Exception {
+    try (BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(randStream(hStreamClient))
+            .recordCountLimit(100)
+            .flushIntervalMs(100)
+            .build()) {
+      Random random = new Random();
+      final int count = 10;
+      CompletableFuture<RecordId>[] recordIdFutures = new CompletableFuture[count];
+      for (int i = 0; i < count; ++i) {
+        byte[] rawRecord = new byte[100];
+        random.nextBytes(rawRecord);
+        CompletableFuture<RecordId> future = producer.write(rawRecord);
+        recordIdFutures[i] = future;
+      }
+      CompletableFuture.allOf(recordIdFutures).join();
+    }
+  }
+
+  @Test
+  @Order(9)
+  @Timeout(60)
+  public void testWriteBatchRawRecordBasedBytesSize() throws Exception {
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(randStream(hStreamClient))
+            .recordCountLimit(100)
+            .flushIntervalMs(-1)
+            .maxBytesSize(4096)
+            .build();
+    Random random = new Random();
+    final int count = 42;
+    CompletableFuture<RecordId>[] recordIdFutures = new CompletableFuture[count];
+    for (int i = 0; i < count; ++i) {
+      byte[] rawRecord = new byte[100];
+      random.nextBytes(rawRecord);
+      CompletableFuture<RecordId> future = producer.write(rawRecord);
+      recordIdFutures[i] = future;
+    }
+    for (int i = 0; i < count - 1; ++i) {
+      recordIdFutures[i].join();
+    }
+
+    try {
+      recordIdFutures[41].get(3, TimeUnit.SECONDS);
+      assert false;
+    } catch (TimeoutException ignored) {
+    }
+    producer.close();
+    recordIdFutures[41].join();
+  }
+
+  @Test
+  @Timeout(60)
   void createConsumerWithExistedConsumerNameShouldThrowException() throws InterruptedException {
     final String streamName = randStream(hStreamClient);
     final String subscription = randSubscription(hStreamClient, streamName);
@@ -660,10 +741,11 @@ class BasicTest {
   @Timeout(60)
   void testACK() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(100).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(100).build();
     Random rand = new Random();
     var rids = doProduceAndGatherRid(producer, 10, 2500);
+    producer.close();
     CountDownLatch notify = new CountDownLatch(rids.size());
     final String subscription = randSubscriptionFromEarliest(hStreamClient, streamName);
     Set<RecordId> res = new HashSet<>();
@@ -762,9 +844,10 @@ class BasicTest {
   @Timeout(60)
   void testConsumeLargeRawBatchRecord() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(100).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(100).build();
     var records = doProduce(producer, 1024 * 4, 2700);
+    producer.close();
     CountDownLatch notify = new CountDownLatch(records.size());
     final String subscription = randSubscriptionFromEarliest(hStreamClient, streamName);
     List<String> res = new ArrayList<>();
@@ -786,8 +869,8 @@ class BasicTest {
   @Timeout(60)
   void testSubscribeInMiddleOfBatch() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(2).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(2).build();
     var rids = new ArrayList<RecordId>();
     Random rand = new Random();
     byte[] rRec = new byte[2];
@@ -798,6 +881,7 @@ class BasicTest {
       records.add(Arrays.toString(rRec));
       writes.add(producer.write(rRec));
     }
+    producer.close();
     writes.forEach(w -> w.thenAccept(rids::add));
 
     for (int i = 0; i < 10; i++) {
@@ -851,8 +935,10 @@ class BasicTest {
   @Timeout(60)
   void testSubscribeBeforeOrAfterProducedOffset() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(10).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().flushIntervalMs(-1).stream(streamName)
+            .recordCountLimit(10)
+            .build();
     long minLSN = Integer.MAX_VALUE;
     int minBatchIndex = Integer.MAX_VALUE;
     long maxLSN = Integer.MIN_VALUE;
@@ -923,6 +1009,7 @@ class BasicTest {
       writes.add(producer.write(rRec));
     }
     writes.forEach(w -> w.thenAccept(records2::add));
+    producer.close();
     Thread.sleep(3000);
     consumer2.stopAsync().awaitTerminated();
     final RecordId newRecordId = new RecordId(maxLSN + 10, 0);
@@ -938,10 +1025,11 @@ class BasicTest {
   @Timeout(60)
   void testRedundancyAndUnorderedAck() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(10).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(10).build();
     Random rand = new Random();
     var records = doProduce(producer, 128, 1000);
+    producer.close();
     final String subscription = randSubscriptionFromEarliest(hStreamClient, streamName);
 
     CountDownLatch notify = new CountDownLatch(records.size());
@@ -1025,10 +1113,11 @@ class BasicTest {
   void testConsumerGroup() throws Exception {
     final String streamName = randStream(hStreamClient);
     final String subscription = randSubscription(hStreamClient, streamName);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(50).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(50).build();
     final int count = 3500;
     var records = doProduce(producer, 100, count);
+    producer.close();
 
     CountDownLatch signal = new CountDownLatch(count);
     List<ReceivedRawRecord> res1 = new ArrayList<>();
@@ -1069,9 +1158,10 @@ class BasicTest {
     final String streamName = randStream(hStreamClient);
     final String subscription = randSubscription(hStreamClient, streamName);
 
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(50).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(50).build();
     List<RecordId> records = doProduceAndGatherRid(producer, 1, 2500);
+    producer.close();
     Random random = new Random();
     final int maxReceivedCountC1 = Math.max(1, random.nextInt(recordCount / 3));
     CountDownLatch latch1 = new CountDownLatch(1);
@@ -1139,10 +1229,11 @@ class BasicTest {
   void testAddConsumerToConsumerGroup() throws Exception {
     final String streamName = randStream(hStreamClient);
     final String subscription = randSubscription(hStreamClient, streamName);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(50).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(50).build();
     final int count = 5000;
     List<String> records = doProduce(producer, 100, count);
+    producer.close();
     CountDownLatch signal = new CountDownLatch(count);
     List<ReceivedRawRecord> res1 = new ArrayList<>();
     List<ReceivedRawRecord> res2 = new ArrayList<>();
@@ -1183,10 +1274,11 @@ class BasicTest {
   void testReduceConsumerToConsumerGroup() throws Exception {
     final String streamName = randStream(hStreamClient);
     final String subscription = randSubscription(hStreamClient, streamName);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(50).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(50).build();
     final int count = 5000;
     List<String> records = doProduce(producer, 100, count);
+    producer.close();
     CountDownLatch signal = new CountDownLatch(count);
     List<ReceivedRawRecord> res1 = new ArrayList<>();
     List<ReceivedRawRecord> res2 = new ArrayList<>();
@@ -1231,14 +1323,15 @@ class BasicTest {
   void testDynamicConsumerToConsumerGroup() throws Exception {
     final String streamName = randStream(hStreamClient);
     final String subscription = randSubscriptionWithTimeout(hStreamClient, streamName, 1);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(50).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(50).build();
     final int count = 20000;
     Random rand = new Random();
     CountDownLatch signal = new CountDownLatch(count);
     int consumerNameSuffix = 1;
     var lock = new ReentrantLock();
     List<RecordId> records = doProduceAndGatherRid(producer, 100, count);
+    producer.close();
     var receivedRecords = new ArrayList<ArrayList<ReceivedRawRecord>>();
     var consumers = new ArrayList<Consumer>();
     for (int i = 0; i < 3; i++) {
