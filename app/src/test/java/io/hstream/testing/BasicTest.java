@@ -5,6 +5,7 @@ import static io.hstream.testing.TestUtils.createConsumerCollectStringPayload;
 import static io.hstream.testing.TestUtils.createConsumerWithFixNumsRecords;
 import static io.hstream.testing.TestUtils.doProduce;
 import static io.hstream.testing.TestUtils.doProduceAndGatherRid;
+import static io.hstream.testing.TestUtils.randBytes;
 import static io.hstream.testing.TestUtils.randStream;
 import static io.hstream.testing.TestUtils.randSubscription;
 import static io.hstream.testing.TestUtils.randSubscriptionFromEarliest;
@@ -33,8 +34,11 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -84,7 +88,7 @@ class BasicTest {
 
   @BeforeEach
   public void setup() throws Exception {
-    logger.debug(" hStreamDBUrl " + hStreamDBUrl);
+    logger.debug("hStreamDBUrl " + hStreamDBUrl);
     hStreamClient = HStreamClient.builder().serviceUrl(hStreamDBUrl).build();
   }
 
@@ -97,7 +101,7 @@ class BasicTest {
     Random rand = new Random();
     byte[] rRec = new byte[128];
     for (int i = 0; i < 1000; i++) {
-      System.out.println("Thread " + tid + " write");
+      logger.info("Thread " + tid + " write");
       rand.nextBytes(rRec);
       p.write(rRec).join();
     }
@@ -110,7 +114,7 @@ class BasicTest {
   void testConnections() throws Exception {
 
     for (var hServerUrl : hServerUrls) {
-      System.out.println(hServerUrl);
+      logger.info("hServerUrl is " + hServerUrl);
       try (HStreamClient client = HStreamClient.builder().serviceUrl(hServerUrl).build()) {
         List<Stream> res = client.listStreams();
         Assertions.assertTrue(res.isEmpty());
@@ -223,7 +227,7 @@ class BasicTest {
                 }))
             .build();
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     Assertions.assertArrayEquals(record, res.get(0));
@@ -287,7 +291,7 @@ class BasicTest {
                 }))
             .build();
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     var hRecordInput =
@@ -329,7 +333,7 @@ class BasicTest {
                 }))
             .build();
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     Assertions.assertEquals(hRec.toString(), res.get(0).toString());
@@ -351,7 +355,7 @@ class BasicTest {
         createConsumerCollectStringPayload(
             hStreamClient, subscription, "test-consumer", res, notify, lock);
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     Assertions.assertEquals(records, res);
@@ -374,7 +378,7 @@ class BasicTest {
         createConsumerCollectStringPayload(
             hStreamClient, subscription, "test-consumer", res, notify, lock);
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     Assertions.assertEquals(records, res);
@@ -403,7 +407,7 @@ class BasicTest {
                 }))
             .build();
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done, "consumer timeout");
     Assertions.assertEquals(
@@ -447,7 +451,7 @@ class BasicTest {
                 }))
             .build();
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     var input = records.parallelStream().map(HRecord::toString).collect(Collectors.toList());
@@ -518,7 +522,7 @@ class BasicTest {
       int next = rand.nextInt(10);
       if (next % 2 == 0) {
         batchWrites++;
-        System.out.printf("[turn]: %d, batch write!!!!!\n", i);
+        logger.info("[turn]: {}, batch write!!!!!\n", i);
         var writes = new ArrayList<CompletableFuture<RecordId>>(5);
         for (int j = 0; j < batchSize; j++) {
           var rRec = new byte[] {(byte) i};
@@ -527,7 +531,7 @@ class BasicTest {
         }
         writes.forEach(w -> recordIds.add(w.join()));
       } else {
-        System.out.printf("[turn]: %d, no batch write!!!!!\n", i);
+        logger.info("[turn]: {}, no batch write!!!!!\n", i);
         var rRec = new byte[] {(byte) i};
         records.add(Arrays.toString(rRec));
         recordIds.add(producer.write(rRec).join());
@@ -558,17 +562,18 @@ class BasicTest {
     var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
-    System.out.printf(
-        "wait join !!!!! batch writes = %d, single writes = %d\n",
-        batchWrites, totalWrites - batchWrites);
-    System.out.println("send rid: ");
+    logger.info(
+        "wait join !!!!! batch writes = {}, single writes = {}\n",
+        batchWrites,
+        totalWrites - batchWrites);
+    logger.info("send rid: ");
     Assertions.assertEquals(recordIds.size(), records.size());
     for (int i = 0; i < recordIds.size(); i++) {
-      System.out.println(recordIds.get(i) + ": " + records.get(i));
+      logger.info(recordIds.get(i) + ": " + records.get(i));
     }
-    System.out.println("received rid");
+    logger.info("received rid");
     for (int i = 0; i < receivedRecordIds.size(); i++) {
-      System.out.println(receivedRecordIds.get(i) + ": " + res.get(i));
+      logger.info(receivedRecordIds.get(i) + ": " + res.get(i));
     }
     Assertions.assertEquals(records.size(), res.size());
     Assertions.assertEquals(records, res);
@@ -632,7 +637,7 @@ class BasicTest {
             .build();
 
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
 
@@ -698,7 +703,7 @@ class BasicTest {
                 }))
             .build();
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     Assertions.assertArrayEquals(record, res.get(0));
@@ -720,8 +725,8 @@ class BasicTest {
             hStreamClient, subscription, "test-consumer", res, notify, lock);
     consumer.startAsync().awaitRunning();
     var done = notify.await(35, TimeUnit.SECONDS);
-    System.out.println("records size = " + records.size());
-    System.out.println("res size = " + res.size());
+    logger.info("records size = " + records.size());
+    logger.info("res size = " + res.size());
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done, "consumer time out");
     Assertions.assertEquals(records, res);
@@ -782,12 +787,12 @@ class BasicTest {
             .build();
 
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
-    System.out.println(rids.get(randomIndex));
-    System.out.println(rids);
-    System.out.println(rec);
+    logger.info("randomIndex = " + String.valueOf(rids.get(randomIndex)));
+    logger.info("rids = " + String.valueOf(rids));
+    logger.info("rec = " + String.valueOf(rec));
     Assertions.assertEquals((int) records.stream().skip(randomIndex).count(), res.size());
     Assertions.assertEquals(records.stream().skip(randomIndex).collect(Collectors.toList()), res);
   }
@@ -855,7 +860,7 @@ class BasicTest {
     consumer1.startAsync().awaitRunning();
     consumer2.startAsync().awaitRunning();
 
-    var done = notify1.await(10, TimeUnit.SECONDS);
+    var done = notify1.await(20, TimeUnit.SECONDS);
     consumer1.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     Assertions.assertEquals(records, res1);
@@ -954,8 +959,7 @@ class BasicTest {
     consumer.stopAsync().awaitTerminated();
     consumer2.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
-    System.out.printf(
-        "records.size = %d, res.size = %d\n", records.size(), res1.size() + res2.size());
+    logger.info("records.size = {}, res.size = {}\n", records.size(), res1.size() + res2.size());
     Assertions.assertEquals(records.size(), res1.size() + res2.size());
     res1.addAll(res2);
     Assertions.assertEquals(
@@ -990,7 +994,7 @@ class BasicTest {
     consumer2.startAsync().awaitRunning();
     consumer3.startAsync().awaitRunning();
 
-    var done = signal.await(10, TimeUnit.SECONDS);
+    var done = signal.await(20, TimeUnit.SECONDS);
     consumer1.stopAsync().awaitTerminated();
     consumer2.stopAsync().awaitTerminated();
     consumer3.stopAsync().awaitTerminated();
@@ -1035,11 +1039,11 @@ class BasicTest {
 
     consumer1.startAsync().awaitRunning();
     consumer2.startAsync().awaitRunning();
-    var done1 = latch1.await(10, TimeUnit.SECONDS);
-    var done2 = latch2.await(10, TimeUnit.SECONDS);
+    var done1 = latch1.await(20, TimeUnit.SECONDS);
+    var done2 = latch2.await(20, TimeUnit.SECONDS);
     consumer1.stopAsync().awaitTerminated();
     consumer2.stopAsync().awaitTerminated();
-    System.out.println("remove consumer1 and consumer2...");
+    logger.info("remove consumer1 and consumer2...");
     Assertions.assertTrue(done1);
     Assertions.assertTrue(done2);
     Thread.sleep(1000); // leave some time to server to complete ack
@@ -1067,7 +1071,7 @@ class BasicTest {
             .build();
 
     consumer3.startAsync().awaitRunning();
-    var done3 = latch3.await(10, TimeUnit.SECONDS);
+    var done3 = latch3.await(20, TimeUnit.SECONDS);
     Thread.sleep(1000); // leave some time to server to complete ack
     consumer3.stopAsync().awaitTerminated();
     Assertions.assertTrue(done3);
@@ -1106,7 +1110,7 @@ class BasicTest {
         createConsumer(hStreamClient, subscription, "consumer-3", res3, signal, lock);
     consumer3.startAsync().awaitRunning();
 
-    boolean done = signal.await(10, TimeUnit.SECONDS);
+    boolean done = signal.await(20, TimeUnit.SECONDS);
     consumer1.stopAsync().awaitTerminated();
     consumer2.stopAsync().awaitTerminated();
     consumer3.stopAsync().awaitTerminated();
@@ -1207,13 +1211,13 @@ class BasicTest {
       Thread.sleep(2000);
       int idx = rand.nextInt(consumers.size());
       if (idx != lastIdx) {
-        System.out.println("turn: " + (8 - cnt));
+        logger.info("turn: " + (8 - cnt));
         if (consumers.get(idx).isRunning()) {
           consumers.get(idx).stopAsync().awaitTerminated();
-          System.out.println("==================== stop consumer: " + (idx + 1));
+          logger.info("==================== stop consumer: " + (idx + 1));
           alive--;
           if (alive == 0) {
-            System.out.println("no consumer alive!");
+            logger.info("no consumer alive!");
           }
         } else {
           var newConsumer =
@@ -1227,15 +1231,15 @@ class BasicTest {
           newConsumer.startAsync().awaitRunning();
           consumerNameSuffix++;
           consumers.set(idx, newConsumer);
-          System.out.println("==================== start consumer: " + (idx + 1));
+          logger.info("==================== start consumer: " + (idx + 1));
           alive++;
         }
         lastIdx = idx;
         cnt--;
       }
-      System.out.println("countDownLatch.count = " + signal.getCount());
+      logger.info("countDownLatch.count = " + signal.getCount());
     }
-    System.out.println("Dynamic adjustment done. consumer stats: ");
+    logger.info("Dynamic adjustment done. consumer stats: ");
     for (int i = 0; i < consumers.size(); i++) {
       String state;
       if (consumers.get(i).isRunning()) {
@@ -1243,7 +1247,7 @@ class BasicTest {
       } else {
         state = "Stop";
       }
-      System.out.printf("Conumer %d: %s\n", i, state);
+      logger.info("Consumer {}: {}\n", i, state);
     }
 
     if (signal.getCount() != 0) {
@@ -1260,13 +1264,13 @@ class BasicTest {
           newConsumer.startAsync().awaitRunning();
           consumerNameSuffix++;
           consumers.set(i, newConsumer);
-          System.out.println("==================== start consumer: " + (i + 1));
+          logger.info("==================== start consumer: " + (i + 1));
         }
       }
     }
 
     boolean done = signal.await(20, TimeUnit.SECONDS);
-    System.out.println(signal.getCount());
+    logger.info("signal count = " + signal.getCount());
     Assertions.assertTrue(
         done,
         "timeout, total received: "
@@ -1286,5 +1290,148 @@ class BasicTest {
     for (Consumer consumer : consumers) {
       consumer.stopAsync().awaitTerminated();
     }
+  }
+
+  @Test
+  @Timeout(60)
+  void testWriteToDeletedStreamShouldFail() throws Exception {
+    String stream = randStream(hStreamClient);
+
+    Producer producer = hStreamClient.newProducer().stream(stream).build();
+
+    RecordId id0 = producer.write(randBytes()).join();
+    RecordId id1 = producer.write(randBytes()).join();
+    Assertions.assertTrue(id0.compareTo(id1) < 0);
+
+    hStreamClient.deleteStream(stream);
+    Assertions.assertThrows(Exception.class, () -> producer.write(randBytes()).join());
+  }
+
+  @Test
+  @Timeout(60)
+  void testMultiThreadListStream() throws Exception {
+    randStream(hStreamClient);
+
+    ExecutorService executor = Executors.newCachedThreadPool();
+    for (String hServerUrl : hServerUrls) {
+      executor.execute(
+          () -> {
+            HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build();
+            Assertions.assertNotNull(c.listStreams());
+          });
+    }
+  }
+
+  @Test
+  @Timeout(60)
+  void testMultiThreadCreateSameStream() throws Exception {
+    ArrayList<Exception> exceptions = new ArrayList<>();
+
+    String stream = randText();
+
+    ArrayList<Thread> threads = new ArrayList<>();
+    for (String hServerUrl : hServerUrls) {
+      threads.add(
+          new Thread(
+              () -> {
+                HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build();
+
+                try {
+                  c.createStream(stream);
+                } catch (Exception e) {
+                  exceptions.add(e);
+                }
+              }));
+    }
+
+    for (Thread thread : threads) {
+      thread.start();
+    }
+
+    for (Thread thread : threads) {
+      thread.join();
+    }
+
+    Assertions.assertEquals(hServerUrls.size() - 1, exceptions.size());
+  }
+
+  @Test
+  @Timeout(60)
+  void createThenDeleteStreamFromDifferentServerUrl() throws Exception {
+    ArrayList<HStreamClient> clients = new ArrayList<>();
+    for (String hServerUrl : hServerUrls) {
+      clients.add(HStreamClient.builder().serviceUrl(hServerUrl).build());
+    }
+    String stream = randStream(clients.get(0));
+    clients.get(1).deleteStream(stream);
+    for (int i = 2; i < clients.size(); i++) {
+      int finalI = i;
+      Assertions.assertThrows(Exception.class, () -> clients.get(finalI).deleteStream(stream));
+    }
+  }
+
+  @Test
+  @Timeout(60)
+  void testMultiThreadDeleteSameStream() throws Exception {
+    ArrayList<Exception> exceptions = new ArrayList<>();
+
+    String stream = randStream(hStreamClient);
+
+    ArrayList<Thread> threads = new ArrayList<>();
+    for (String hServerUrl : hServerUrls) {
+      threads.add(
+          new Thread(
+              () -> {
+                HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build();
+
+                try {
+                  c.deleteStream(stream);
+                } catch (Exception e) {
+                  exceptions.add(e);
+                }
+              }));
+    }
+
+    for (Thread thread : threads) {
+      thread.start();
+    }
+
+    for (Thread thread : threads) {
+      thread.join();
+    }
+
+    Assertions.assertEquals(hServerUrls.size() - 1, exceptions.size());
+  }
+
+  @Test
+  @Timeout(60)
+  void testWriteRawThenReadFromDifferentServerUrl() throws Exception {
+    Random rand = new Random();
+    byte[] randRecs = new byte[128];
+    rand.nextBytes(randRecs);
+
+    HStreamClient hStreamClient1 = HStreamClient.builder().serviceUrl(hServerUrls.get(1)).build();
+    String stream = randStream(hStreamClient1);
+    hStreamClient1.close();
+
+    Producer producer = hStreamClient.newProducer().stream(stream).build();
+    producer.write(randRecs);
+
+    String subscription = randSubscription(hStreamClient, stream);
+    HStreamClient hStreamClient2 = HStreamClient.builder().serviceUrl(hServerUrls.get(2)).build();
+    Consumer consumer =
+        hStreamClient2
+            .newConsumer()
+            .name("test-newConsumer-" + UUID.randomUUID())
+            .subscription(subscription)
+            .rawRecordReceiver(
+                (recs, receiver) -> {
+                  Assertions.assertEquals(randRecs, recs.getRawRecord());
+                  receiver.ack();
+                })
+            .build();
+
+    consumer.startAsync().awaitRunning(5, TimeUnit.SECONDS);
+    consumer.stopAsync().awaitTerminated();
   }
 }
