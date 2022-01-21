@@ -21,11 +21,14 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
 
 @ExtendWith(BasicExtension.class)
 class SingleNodeTest {
 
+  private static final Logger logger = LoggerFactory.getLogger(SingleNodeTest.class);
   private String hStreamDBUrl;
   private HStreamClient hStreamClient;
   private GenericContainer<?> server;
@@ -40,7 +43,7 @@ class SingleNodeTest {
 
   @BeforeEach
   public void setup() throws Exception {
-    System.out.println("db url: " + hStreamDBUrl);
+    logger.debug("db url: " + hStreamDBUrl);
     hStreamClient = HStreamClient.builder().serviceUrl(hStreamDBUrl).build();
   }
 
@@ -51,7 +54,6 @@ class SingleNodeTest {
 
   // -----------------------------------------------------------------------------------------------
 
-  @Disabled("restart may cause test fail, disable")
   @Test
   @Timeout(60)
   void testGetResourceAfterRestartServer() throws Exception {
@@ -81,7 +83,7 @@ class SingleNodeTest {
         createConsumerCollectStringPayload(
             hStreamClient, subscription, "test-consumer", res, notify, lock);
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     Assertions.assertEquals(records, res);
@@ -95,7 +97,7 @@ class SingleNodeTest {
         createConsumerCollectStringPayload(
             hStreamClient, subscription1, "test-consumer", res, notify2, lock);
     consumer2.startAsync().awaitRunning();
-    done = notify2.await(10, TimeUnit.SECONDS);
+    done = notify2.await(20, TimeUnit.SECONDS);
     consumer2.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     Assertions.assertEquals(records, res);
@@ -119,7 +121,7 @@ class SingleNodeTest {
         createConsumerCollectStringPayload(
             hStreamClient, subscription, "test-consumer", res, notify, lock);
     consumer.startAsync().awaitRunning();
-    var done = notify.await(10, TimeUnit.SECONDS);
+    var done = notify.await(20, TimeUnit.SECONDS);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);
     Assertions.assertEquals(records, res);
@@ -136,7 +138,7 @@ class SingleNodeTest {
         createConsumerCollectStringPayload(
             hStreamClient, subscription, "test-consumer-new", res, notify2, lock);
     consumer2.startAsync().awaitRunning();
-    done = notify2.await(10, TimeUnit.SECONDS);
+    done = notify2.await(20, TimeUnit.SECONDS);
     Thread.sleep(1000);
     consumer2.stopAsync().awaitTerminated();
     Assertions.assertTrue(done);

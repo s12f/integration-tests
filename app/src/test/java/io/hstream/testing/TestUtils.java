@@ -11,6 +11,7 @@ import io.hstream.SubscriptionOffset.SpecialOffset;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -36,10 +37,14 @@ import org.testcontainers.utility.DockerImageName;
 
 public class TestUtils {
 
-  private static Logger logger = LoggerFactory.getLogger(TestUtils.class);
+  private static final Logger logger = LoggerFactory.getLogger(TestUtils.class);
 
   public static String randText() {
     return UUID.randomUUID().toString().replace("-", "");
+  }
+
+  public static byte[] randBytes() {
+    return UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
   }
 
   public static String randStream(HStreamClient c) {
@@ -89,7 +94,7 @@ public class TestUtils {
 
   public static GenericContainer<?> makeHStore(Path dataDir) {
     return new GenericContainer<>(DockerImageName.parse("hstreamdb/hstream:latest"))
-        // .withNetwork(network)
+        // .withImagePullPolicy(PullPolicy.alwaysPull())
         .withNetworkMode("host")
         .withFileSystemBind(
             dataDir.toAbsolutePath().toString(), "/data/hstore", BindMode.READ_WRITE)
@@ -116,6 +121,7 @@ public class TestUtils {
       String hstoreHost,
       int serverId) {
     return new GenericContainer<>(DockerImageName.parse("hstreamdb/hstream:latest"))
+        // .withImagePullPolicy(PullPolicy.alwaysPull())
         .withNetworkMode("host")
         .withFileSystemBind(dataDir.toAbsolutePath().toString(), "/data/hstore", BindMode.READ_ONLY)
         .withCommand(
@@ -154,7 +160,7 @@ public class TestUtils {
     String testClassName = context.getRequiredTestClass().getSimpleName();
     String testName = context.getTestMethod().get().getName();
     String fileName = "../.logs/" + testClassName + "/" + testName + "/" + grp + "/" + entryName;
-    logger.debug(" log to " + fileName);
+    logger.debug("log to " + fileName);
 
     File file = new File(fileName);
     file.getParentFile().mkdirs();
@@ -291,12 +297,12 @@ public class TestUtils {
   public static void restartServer(GenericContainer<?> server) throws Exception {
     server.close();
     Thread.sleep(5000); // need time to let zk clear old data
-    System.out.println("begin restart!");
+    logger.info("begin restart!");
     try {
       if (server.isRunning()) Thread.sleep(2000);
       server.withStartupTimeout(Duration.ofSeconds(5)).start();
     } catch (ContainerLaunchException e) {
-      System.out.println("start hserver failed, try another restart.");
+      logger.info("start hserver failed, try another restart.");
       server.close();
       Thread.sleep(5000);
       server.withStartupTimeout(Duration.ofSeconds(5)).start();
@@ -307,7 +313,7 @@ public class TestUtils {
     logger.info(
         "=====================================================================================");
     logger.info(
-        "%s %s %s %s\n",
+        "{} {} {} {}",
         flag,
         context.getRequiredTestInstance().getClass().getSimpleName(),
         context.getTestMethod().get().getName(),
