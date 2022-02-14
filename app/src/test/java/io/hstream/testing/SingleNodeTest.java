@@ -3,12 +3,12 @@ package io.hstream.testing;
 import static io.hstream.testing.TestUtils.createConsumerCollectStringPayload;
 import static io.hstream.testing.TestUtils.doProduce;
 import static io.hstream.testing.TestUtils.randStream;
-import static io.hstream.testing.TestUtils.randSubscriptionFromEarliest;
+import static io.hstream.testing.TestUtils.randSubscription;
 import static io.hstream.testing.TestUtils.restartServer;
 
+import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
 import io.hstream.HStreamClient;
-import io.hstream.Producer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -54,11 +54,12 @@ class SingleNodeTest {
 
   // -----------------------------------------------------------------------------------------------
 
+  @Disabled("HS-946")
   @Test
   @Timeout(60)
   void testGetResourceAfterRestartServer() throws Exception {
     final String streamName = randStream(hStreamClient);
-    final String subscription = randSubscriptionFromEarliest(hStreamClient, streamName);
+    final String subscription = randSubscription(hStreamClient, streamName);
     restartServer(server);
     var streams = hStreamClient.listStreams();
     Assertions.assertEquals(streamName, streams.get(0).getStreamName());
@@ -71,11 +72,12 @@ class SingleNodeTest {
   @Timeout(60)
   void testReconsumeAfterRestartServer() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(100).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(100).build();
     var records = doProduce(producer, 128, 100);
+    producer.close();
     CountDownLatch notify = new CountDownLatch(records.size());
-    final String subscription = randSubscriptionFromEarliest(hStreamClient, streamName);
+    final String subscription = randSubscription(hStreamClient, streamName);
     List<String> res = new ArrayList<>();
     var lock = new ReentrantLock();
     Consumer consumer =
@@ -91,7 +93,7 @@ class SingleNodeTest {
     res.clear();
     CountDownLatch notify2 = new CountDownLatch(records.size());
 
-    final String subscription1 = randSubscriptionFromEarliest(hStreamClient, streamName);
+    final String subscription1 = randSubscription(hStreamClient, streamName);
     Consumer consumer2 =
         createConsumerCollectStringPayload(
             hStreamClient, subscription1, "test-consumer", res, notify2, lock);
@@ -107,12 +109,13 @@ class SingleNodeTest {
   @Timeout(60)
   void testConsumeAfterRestartServer() throws Exception {
     final String streamName = randStream(hStreamClient);
-    Producer producer =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(100).build();
+    BufferedProducer producer =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(100).build();
     var records = doProduce(producer, 128, 100);
+    producer.close();
 
     CountDownLatch notify = new CountDownLatch(records.size());
-    final String subscription = randSubscriptionFromEarliest(hStreamClient, streamName);
+    final String subscription = randSubscription(hStreamClient, streamName);
     List<String> res = new ArrayList<>();
     var lock = new ReentrantLock();
     Consumer consumer =
@@ -127,9 +130,10 @@ class SingleNodeTest {
     restartServer(server);
     res.clear();
 
-    Producer producer2 =
-        hStreamClient.newProducer().stream(streamName).enableBatch().recordCountLimit(10).build();
+    BufferedProducer producer2 =
+        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(10).build();
     records = doProduce(producer2, 1, 10);
+    producer2.close();
     CountDownLatch notify2 = new CountDownLatch(records.size());
     Consumer consumer2 =
         createConsumerCollectStringPayload(

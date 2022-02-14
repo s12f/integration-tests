@@ -1,7 +1,8 @@
 package io.hstream.testing;
 
+import static io.hstream.testing.TestUtils.buildRecord;
 import static io.hstream.testing.TestUtils.doProduceAndGatherRid;
-import static io.hstream.testing.TestUtils.randBytes;
+import static io.hstream.testing.TestUtils.randRawRec;
 import static io.hstream.testing.TestUtils.randStream;
 import static io.hstream.testing.TestUtils.randSubscription;
 import static io.hstream.testing.TestUtils.writeLog;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -114,6 +116,7 @@ public class ClusterKillNodeTest {
     Assertions.assertThrows(Exception.class, hStreamClient::listStreams);
   }
 
+  @Disabled("create log group issue")
   @RepeatedTest(5)
   @Timeout(60)
   void testWrite() throws Exception {
@@ -145,7 +148,8 @@ public class ClusterKillNodeTest {
 
     for (int i = 0; i < hServers.size() * 20; ++i) {
       logger.info("ready for writing record " + i);
-      var recordId = producer.write(("hello" + i).getBytes(StandardCharsets.UTF_8)).join();
+      var recordId =
+          producer.write(buildRecord(("hello" + i).getBytes(StandardCharsets.UTF_8))).join();
       logger.info("recordId is " + String.valueOf(recordId));
       try {
         Thread.sleep(100);
@@ -155,7 +159,8 @@ public class ClusterKillNodeTest {
     }
   }
 
-  @RepeatedTest(3)
+  @Disabled("HS-946")
+  @RepeatedTest(5)
   @Timeout(90)
   void testReadHalfWayDropNodes() throws Exception {
     final String stream = randStream(hStreamClient);
@@ -172,7 +177,7 @@ public class ClusterKillNodeTest {
     ArrayList<RecordId> recordIds0 = new ArrayList<>();
 
     for (int i = 0; i < cnt; ++i) {
-      recordIds0.add(producer.write(randBytes()).join());
+      recordIds0.add(producer.write(randRawRec()).join());
     }
     Assertions.assertEquals(cnt, recordIds0.size());
 
@@ -234,12 +239,13 @@ public class ClusterKillNodeTest {
     byte[] randRecs = new byte[128];
     Producer producer = hStreamClient.newProducer().stream(stream).build();
     rand.nextBytes(randRecs);
-    RecordId id0 = producer.write(randRecs).join();
+    RecordId id0 = producer.write(buildRecord(randRecs)).join();
     rand.nextBytes(randRecs);
-    RecordId id1 = producer.write(randRecs).join();
+    RecordId id1 = producer.write(buildRecord(randRecs)).join();
     Assertions.assertTrue(id0.compareTo(id1) < 0);
   }
 
+  @Disabled("HS-946")
   @Test
   @Timeout(60)
   void testJoinConsumerGroupBeforeAndAfterKillNodes() throws Exception {
@@ -248,7 +254,7 @@ public class ClusterKillNodeTest {
     Set<RecordId> recordIds0 = new HashSet<>();
     Producer producer = hStreamClient.newProducer().stream(stream).build();
     for (int i = 0; i < 32; ++i) {
-      recordIds0.add(producer.write(randBytes()).join());
+      recordIds0.add(producer.write(randRawRec()).join());
     }
 
     List<Integer> serverIds =
@@ -278,6 +284,7 @@ public class ClusterKillNodeTest {
     Assertions.assertEquals(recordIds0, recordIds1);
   }
 
+  @Disabled("HS-946")
   @Test
   @Timeout(150)
   void testKillAllNodesThenRestartOneShouldConsumeAll() throws Exception {
