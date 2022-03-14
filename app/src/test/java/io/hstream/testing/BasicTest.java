@@ -500,6 +500,7 @@ class BasicTest {
     final int cnt = 100;
     var futures = new CompletableFuture[100];
 
+    // Refactor: threads
     Thread t0 =
         new Thread(
             () -> {
