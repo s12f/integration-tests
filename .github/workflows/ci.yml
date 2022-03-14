@@ -29,7 +29,7 @@ jobs:
           ./gradlew spotlessJavaCheck
           ./gradlew spotlessGroovyGradleCheck
 
-      - run: ./gradlew build
+      - run: ./gradlew :app:test --info --tests "io.hstream.testing.BasicTest"
 
       - uses: actions/upload-artifact@v2
         if: ${{ success() }} || ${{ failure() }}
