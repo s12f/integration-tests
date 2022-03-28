@@ -10,7 +10,6 @@ import static io.hstream.testing.TestUtils.writeLog;
 import io.hstream.Consumer;
 import io.hstream.HStreamClient;
 import io.hstream.Producer;
-import io.hstream.RecordId;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -174,7 +173,7 @@ public class ClusterKillNodeTest {
     Collections.shuffle(xs);
 
     Producer producer = hStreamClient.newProducer().stream(stream).build();
-    ArrayList<RecordId> recordIds0 = new ArrayList<>();
+    ArrayList<String> recordIds0 = new ArrayList<>();
 
     for (int i = 0; i < cnt; ++i) {
       recordIds0.add(producer.write(randRawRec()).join());
@@ -185,7 +184,7 @@ public class ClusterKillNodeTest {
     e.set(null);
 
     CountDownLatch countDown = new CountDownLatch(cnt);
-    Set<RecordId> recordIds1 = new HashSet<>();
+    Set<String> recordIds1 = new HashSet<>();
     Consumer consumer =
         hStreamClient
             .newConsumer()
@@ -239,9 +238,9 @@ public class ClusterKillNodeTest {
     byte[] randRecs = new byte[128];
     Producer producer = hStreamClient.newProducer().stream(stream).build();
     rand.nextBytes(randRecs);
-    RecordId id0 = producer.write(buildRecord(randRecs)).join();
+    String id0 = producer.write(buildRecord(randRecs)).join();
     rand.nextBytes(randRecs);
-    RecordId id1 = producer.write(buildRecord(randRecs)).join();
+    String id1 = producer.write(buildRecord(randRecs)).join();
     Assertions.assertTrue(id0.compareTo(id1) < 0);
   }
 
@@ -251,7 +250,7 @@ public class ClusterKillNodeTest {
   void testJoinConsumerGroupBeforeAndAfterKillNodes() throws Exception {
     String stream = randStream(hStreamClient);
     String subscription = randSubscription(hStreamClient, stream);
-    Set<RecordId> recordIds0 = new HashSet<>();
+    Set<String> recordIds0 = new HashSet<>();
     Producer producer = hStreamClient.newProducer().stream(stream).build();
     for (int i = 0; i < 32; ++i) {
       recordIds0.add(producer.write(randRawRec()).join());
@@ -264,7 +263,7 @@ public class ClusterKillNodeTest {
     terminateHServerWithLogs(0, serverIds.get(1));
     Thread.sleep(2000);
 
-    Set<RecordId> recordIds1 = new HashSet<>();
+    Set<String> recordIds1 = new HashSet<>();
     CountDownLatch countDownLatch = new CountDownLatch(32);
     Consumer consumer =
         hStreamClient
@@ -293,8 +292,8 @@ public class ClusterKillNodeTest {
     final int msgCnt = 2000;
 
     Producer producer = hStreamClient.newProducer().stream(stream).build();
-    Set<RecordId> recs0 = new HashSet<>(doProduceAndGatherRid(producer, 1, msgCnt));
-    Set<RecordId> recs1 = new HashSet<>();
+    Set<String> recs0 = new HashSet<>(doProduceAndGatherRid(producer, 1, msgCnt));
+    Set<String> recs1 = new HashSet<>();
     CountDownLatch countDown0 = new CountDownLatch(msgCnt / 2);
 
     Consumer consumer0 =

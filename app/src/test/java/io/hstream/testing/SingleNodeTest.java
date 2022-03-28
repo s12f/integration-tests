@@ -2,6 +2,7 @@ package io.hstream.testing;
 
 import static io.hstream.testing.TestUtils.createConsumerCollectStringPayload;
 import static io.hstream.testing.TestUtils.doProduce;
+import static io.hstream.testing.TestUtils.makeBufferedProducer;
 import static io.hstream.testing.TestUtils.randStream;
 import static io.hstream.testing.TestUtils.randSubscription;
 import static io.hstream.testing.TestUtils.restartServer;
@@ -72,8 +73,7 @@ class SingleNodeTest {
   @Timeout(60)
   void testReconsumeAfterRestartServer() throws Exception {
     final String streamName = randStream(hStreamClient);
-    BufferedProducer producer =
-        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(100).build();
+    BufferedProducer producer = makeBufferedProducer(hStreamClient, streamName, 100);
     var records = doProduce(producer, 128, 100);
     producer.close();
     CountDownLatch notify = new CountDownLatch(records.size());
@@ -109,8 +109,7 @@ class SingleNodeTest {
   @Timeout(60)
   void testConsumeAfterRestartServer() throws Exception {
     final String streamName = randStream(hStreamClient);
-    BufferedProducer producer =
-        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(100).build();
+    BufferedProducer producer = makeBufferedProducer(hStreamClient, streamName, 100);
     var records = doProduce(producer, 128, 100);
     producer.close();
 
@@ -130,8 +129,7 @@ class SingleNodeTest {
     restartServer(server);
     res.clear();
 
-    BufferedProducer producer2 =
-        hStreamClient.newBufferedProducer().stream(streamName).recordCountLimit(10).build();
+    BufferedProducer producer2 = makeBufferedProducer(hStreamClient, streamName, 10);
     records = doProduce(producer2, 1, 10);
     producer2.close();
     CountDownLatch notify2 = new CountDownLatch(records.size());
