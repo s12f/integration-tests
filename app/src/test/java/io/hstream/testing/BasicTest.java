@@ -3,7 +3,6 @@ package io.hstream.testing;
 import static io.hstream.testing.TestUtils.buildRecord;
 import static io.hstream.testing.TestUtils.consume;
 import static io.hstream.testing.TestUtils.consumeAsync;
-import static io.hstream.testing.TestUtils.createConsumerCollectStringPayload;
 import static io.hstream.testing.TestUtils.doProduce;
 import static io.hstream.testing.TestUtils.doProduceAndGatherRid;
 import static io.hstream.testing.TestUtils.makeBufferedProducer;
@@ -686,19 +685,19 @@ class BasicTest {
     BufferedProducer producer = makeBufferedProducer(hStreamClient, streamName, 100);
     var records = doProduce(producer, 1024 * 4, 2700);
     producer.close();
-    CountDownLatch notify = new CountDownLatch(records.size());
     final String subscription = randSubscription(hStreamClient, streamName);
     List<String> res = new ArrayList<>();
-    var lock = new ReentrantLock();
-    Consumer consumer =
-        createConsumerCollectStringPayload(
-            hStreamClient, subscription, "test-consumer", res, notify, lock);
-    consumer.startAsync().awaitRunning();
-    var done = notify.await(35, TimeUnit.SECONDS);
+    consume(
+        hStreamClient,
+        subscription,
+        "c1",
+        35,
+        receivedRawRecord -> {
+          res.add(Arrays.toString(receivedRawRecord.getRawRecord()));
+          return res.size() < records.size();
+        });
     logger.info("records size = " + records.size());
     logger.info("res size = " + res.size());
-    consumer.stopAsync().awaitTerminated();
-    Assertions.assertTrue(done, "consumer time out");
     Assertions.assertEquals(records, res);
   }
 
