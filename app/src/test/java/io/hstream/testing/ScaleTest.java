@@ -2,6 +2,7 @@ package io.hstream.testing;
 
 import static io.hstream.testing.TestUtils.doProduce;
 import static io.hstream.testing.TestUtils.doProduceAndGatherRid;
+import static io.hstream.testing.TestUtils.makeBufferedProducer;
 import static io.hstream.testing.TestUtils.randRawRec;
 import static io.hstream.testing.TestUtils.randStream;
 import static io.hstream.testing.TestUtils.randSubscription;
@@ -10,7 +11,6 @@ import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
 import io.hstream.HStreamClient;
 import io.hstream.Producer;
-import io.hstream.RecordId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -84,7 +84,7 @@ public class ScaleTest {
     final String subscription = randSubscription(hStreamClient, stream);
     final int total = 64;
 
-    List<RecordId> recordIds0 = new ArrayList<>();
+    List<String> recordIds0 = new ArrayList<>();
     ReentrantLock lock = new ReentrantLock();
 
     List<Thread> threads = new ArrayList<>();
@@ -112,8 +112,8 @@ public class ScaleTest {
       x.join();
     }
 
-    Set<RecordId> set0 = new HashSet<>(recordIds0);
-    Set<RecordId> set1 = new HashSet<>();
+    Set<String> set0 = new HashSet<>(recordIds0);
+    Set<String> set1 = new HashSet<>();
     CountDownLatch countDown1 = new CountDownLatch(total * total);
     Consumer consumer =
         hStreamClient
@@ -145,11 +145,11 @@ public class ScaleTest {
     final int totalMsgCnt = total * 4;
 
     Producer producer = hStreamClient.newProducer().stream(stream).build();
-    Set<RecordId> recordIds0 = new HashSet<>(doProduceAndGatherRid(producer, 1, totalMsgCnt));
+    Set<String> recordIds0 = new HashSet<>(doProduceAndGatherRid(producer, 1, totalMsgCnt));
 
     Thread cur = Thread.currentThread();
 
-    Set<RecordId> recordIds1 = new HashSet<>();
+    Set<String> recordIds1 = new HashSet<>();
     ReentrantLock lock = new ReentrantLock();
     CountDownLatch countDown = new CountDownLatch(totalMsgCnt);
 
@@ -192,7 +192,7 @@ public class ScaleTest {
     }
 
     Producer producer = hStreamClient.newProducer().stream(stream).build();
-    List<RecordId> recordIds0 = new ArrayList<>();
+    List<String> recordIds0 = new ArrayList<>();
     for (int i = 0; i < msgCntForEachCase; ++i) {
       recordIds0.add(producer.write(randRawRec()).join());
     }
@@ -203,7 +203,7 @@ public class ScaleTest {
       Thread thread =
           new Thread(
               () -> {
-                List<RecordId> recordIds1 = new ArrayList<>();
+                List<String> recordIds1 = new ArrayList<>();
                 CountDownLatch countDown = new CountDownLatch(msgCntForEachCase);
                 Consumer consumer =
                     hStreamClient
@@ -240,8 +240,7 @@ public class ScaleTest {
     final String subscription = randSubscription(hStreamClient, stream);
     final int batchSize = 512;
 
-    BufferedProducer producer =
-        hStreamClient.newBufferedProducer().stream(stream).recordCountLimit(batchSize).build();
+    BufferedProducer producer = makeBufferedProducer(hStreamClient, stream, batchSize);
     List<String> recs0 = doProduce(producer, 4, 2048);
     producer.close();
 

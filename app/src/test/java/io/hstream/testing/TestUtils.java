@@ -1,12 +1,16 @@
 package io.hstream.testing;
 
+import com.google.common.util.concurrent.Service;
+import io.hstream.BatchSetting;
+import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
 import io.hstream.HRecord;
 import io.hstream.HStreamClient;
 import io.hstream.Producer;
+import io.hstream.ReceivedHRecord;
 import io.hstream.ReceivedRawRecord;
 import io.hstream.Record;
-import io.hstream.RecordId;
+import io.hstream.Responder;
 import io.hstream.Subscription;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -18,14 +22,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
-import org.junit.jupiter.api.Assertions;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -179,79 +184,114 @@ public class TestUtils {
   }
 
   // -----------------------------------------------------------------------------------------------
-
-  public static boolean isAscending(List<RecordId> input) {
-    if (input.isEmpty()) {
-      return true;
-    }
-    if (input.size() == 1) {
-      return true;
-    }
-
-    for (int i = 1; i < input.size(); i++) {
-      if (input.get(i - 1).compareTo(input.get(i)) >= 0) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  public static void assertRecordIdsAscending(List<ReceivedRawRecord> input) {
-    Assertions.assertTrue(
-        isAscending(
-            input.stream().map(ReceivedRawRecord::getRecordId).collect(Collectors.toList())),
-        "is not ascending");
-  }
-
-  public static Consumer createConsumer(
+  public static void consume(
       HStreamClient client,
       String subscription,
       String name,
-      List<ReceivedRawRecord> records,
-      CountDownLatch latch,
-      ReentrantLock lock) {
-    return client
-        .newConsumer()
-        .subscription(subscription)
-        .name(name)
-        .rawRecordReceiver(
-            (receivedRawRecord, responder) -> {
-              lock.lock();
-              records.add(receivedRawRecord);
-              lock.unlock();
-              responder.ack();
-              latch.countDown();
-            })
-        .build();
+      long timeoutSeconds,
+      Function<ReceivedRawRecord, Boolean> handle)
+      throws Exception {
+    consumeAsync(client, subscription, name, handle).get(timeoutSeconds, TimeUnit.SECONDS);
   }
 
-  public static Consumer createConsumerWithFixNumsRecords(
+  public static void consume(
       HStreamClient client,
-      int nums,
       String subscription,
       String name,
-      Set<RecordId> records,
-      CountDownLatch latch,
-      ReentrantLock lock) {
-    final int maxReceivedCount = nums;
-    AtomicInteger receivedRecordCount = new AtomicInteger(0);
-    return client
-        .newConsumer()
-        .subscription(subscription)
-        .name(name)
-        .rawRecordReceiver(
-            (receivedRawRecord, responder) -> {
-              if (receivedRecordCount.get() < maxReceivedCount) {
-                lock.lock();
-                var success = records.add(receivedRawRecord.getRecordId());
-                lock.unlock();
-                responder.ack();
-                if (success && receivedRecordCount.incrementAndGet() == maxReceivedCount) {
-                  latch.countDown();
-                }
-              }
-            })
-        .build();
+      long timeoutSeconds,
+      Function<ReceivedRawRecord, Boolean> handle,
+      Function<ReceivedHRecord, Boolean> handleHRecord)
+      throws Exception {
+    consumeAsync(client, subscription, name, handle, handleHRecord)
+        .get(timeoutSeconds, TimeUnit.SECONDS);
+  }
+
+  public static CompletableFuture<Void> consumeAsync(
+      HStreamClient client,
+      String subscription,
+      String name,
+      Function<ReceivedRawRecord, Boolean> handle) {
+    return consumeAsync(client, subscription, name, handle, null, null);
+  }
+
+  public static CompletableFuture<Void> consumeAsync(
+      HStreamClient client,
+      String subscription,
+      String name,
+      Function<ReceivedRawRecord, Boolean> handle,
+      Function<ReceivedHRecord, Boolean> handleHRecord) {
+    return consumeAsync(client, subscription, name, handle, handleHRecord, null);
+  }
+
+  static class FailedConsumerListener extends Service.Listener {
+    BiConsumer<Service.State, Throwable> handler;
+
+    FailedConsumerListener(BiConsumer<Service.State, Throwable> handler) {
+      this.handler = handler;
+    }
+
+    @Override
+    public void failed(Service.@NotNull State from, @NotNull Throwable failure) {
+      handler.accept(from, failure);
+    }
+  }
+
+  public static CompletableFuture<Void> consumeAsync(
+      HStreamClient client,
+      String subscription,
+      String name,
+      Function<ReceivedRawRecord, Boolean> handle,
+      Function<ReceivedHRecord, Boolean> handleHRecord,
+      Function<Responder, Void> handleResponder) {
+    CompletableFuture<Void> future = new CompletableFuture<>();
+    var consumer =
+        client
+            .newConsumer()
+            .subscription(subscription)
+            .name(name)
+            .rawRecordReceiver(
+                (receivedRawRecord, responder) -> {
+                  if (handleResponder != null) {
+                    handleResponder.apply(responder);
+                  } else {
+                    responder.ack();
+                  }
+                  try {
+                    if (!handle.apply(receivedRawRecord)) {
+                      future.complete(null);
+                    }
+                  } catch (Exception e) {
+                    future.completeExceptionally(e);
+                  }
+                })
+            .hRecordReceiver(
+                ((receivedHRecord, responder) -> {
+                  if (handleResponder != null) {
+                    handleResponder.apply(responder);
+                  } else {
+                    responder.ack();
+                  }
+                  try {
+                    if (!handleHRecord.apply(receivedHRecord)) {
+                      future.complete(null);
+                    }
+                  } catch (Exception e) {
+                    future.completeExceptionally(e);
+                  }
+                }))
+            .build();
+    consumer.addListener(
+        new FailedConsumerListener(
+            (fs, e) -> {
+              logger.info("consumer failed, e:{}", e.getMessage());
+              future.completeExceptionally(e);
+            }),
+        new ScheduledThreadPoolExecutor(1));
+    consumer.startAsync().awaitRunning();
+    return future.whenCompleteAsync(
+        (x, y) -> {
+          consumer.stopAsync().awaitTerminated();
+        });
   }
 
   public static Consumer createConsumerCollectStringPayload(
@@ -277,33 +317,48 @@ public class TestUtils {
   }
 
   public static ArrayList<String> doProduce(Producer producer, int payloadSize, int recordsNums) {
+    return produce(producer, payloadSize, recordsNums).records;
+  }
+
+  public static ArrayList<String> doProduceAndGatherRid(
+      Producer producer, int payloadSize, int recordsNums) {
+    return produce(producer, payloadSize, recordsNums).ids;
+  }
+
+  public static class RecordsPair {
+    public ArrayList<String> ids;
+    public ArrayList<String> records;
+  }
+
+  public static RecordsPair produce(Producer producer, int payloadSize, int count) {
+    return produce(producer, payloadSize, count, null);
+  }
+
+  public static RecordsPair produce(Producer producer, int payloadSize, int count, String key) {
     Random rand = new Random();
     byte[] rRec = new byte[payloadSize];
     var records = new ArrayList<String>();
-    var xs = new CompletableFuture[recordsNums];
-    for (int i = 0; i < recordsNums; i++) {
+    List<CompletableFuture<String>> xs = new ArrayList<>(count);
+    for (int i = 0; i < count; i++) {
       rand.nextBytes(rRec);
+      Record recordToWrite = Record.newBuilder().orderingKey(key).rawRecord(rRec).build();
       records.add(Arrays.toString(rRec));
-      xs[i] = producer.write(Record.newBuilder().rawRecord(rRec).build());
+      xs.add(producer.write(recordToWrite));
     }
-    CompletableFuture.allOf(xs).join();
-    Assertions.assertEquals(recordsNums, records.size());
-    return records;
+
+    RecordsPair p = new RecordsPair();
+    p.records = records;
+    ArrayList<String> ids = new ArrayList<>(count);
+    xs.forEach(x -> ids.add(x.join()));
+    p.ids = ids;
+    return p;
   }
 
-  public static ArrayList<RecordId> doProduceAndGatherRid(
-      Producer producer, int payloadSize, int recordsNums) {
-    var rids = new ArrayList<RecordId>();
-    Random rand = new Random();
-    byte[] rRec = new byte[payloadSize];
-    var writes = new ArrayList<CompletableFuture<RecordId>>();
-    for (int i = 0; i < recordsNums; i++) {
-      rand.nextBytes(rRec);
-      writes.add(producer.write(buildRecord(rRec)));
-    }
-    writes.forEach(w -> rids.add(w.join()));
-    Assertions.assertEquals(recordsNums, rids.size());
-    return rids;
+  public static BufferedProducer makeBufferedProducer(
+      HStreamClient client, String streamName, int batchRecordLimit) {
+    BatchSetting batchSetting =
+        BatchSetting.newBuilder().recordCountLimit(batchRecordLimit).build();
+    return client.newBufferedProducer().stream(streamName).batchSetting(batchSetting).build();
   }
 
   public static void restartServer(GenericContainer<?> server) throws Exception {
