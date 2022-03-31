@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
@@ -40,6 +41,8 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
 
     dataDir = Files.createTempDirectory("hstream");
 
+    TestUtils.SecurityOptions securityOptions = makeSecurityOptions(context.getTags());
+
     zk = makeZooKeeper();
     zk.start();
     String zkHost = "127.0.0.1";
@@ -56,7 +59,14 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
       int hServerInnerPort = 65000 + i;
       var hServer =
           makeHServer(
-              hServerAddress, hServerPort, hServerInnerPort, dataDir, zkHost, hstoreHost, i);
+              hServerAddress,
+              hServerPort,
+              hServerInnerPort,
+              dataDir,
+              zkHost,
+              hstoreHost,
+              i,
+              securityOptions);
       hServer.start();
       hServers.add(hServer);
       hServerUrls.add(hServerAddress + ":" + hServerPort);
@@ -103,5 +113,19 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
 
     logger.info("total time is = {}ms", System.currentTimeMillis() - beginTime);
     printEndFlag(context);
+  }
+
+  TestUtils.SecurityOptions makeSecurityOptions(Set<String> tags) {
+    TestUtils.SecurityOptions options = new TestUtils.SecurityOptions();
+    options.dir = getClass().getClassLoader().getResource("security").getPath();
+    if (tags.contains("tls")) {
+      options.enableTls = true;
+      options.keyPath = "/data/security/server.key.pem";
+      options.certPath = "/data/security/signed.server.cert.pem";
+    }
+    if (tags.contains("tls-authentication")) {
+      options.caPath = "/data/security/ca.cert.pem";
+    }
+    return options;
   }
 }

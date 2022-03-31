@@ -47,7 +47,8 @@ public class BasicExtension implements BeforeEachCallback, AfterEachCallback {
     int hServerPort = 6570;
     int hServerInnerPort = 65000;
     hserver =
-        makeHServer(hServerAddress, hServerPort, hServerInnerPort, dataDir, zkHost, hstoreHost, 0);
+        makeHServer(
+            hServerAddress, hServerPort, hServerInnerPort, dataDir, zkHost, hstoreHost, 0, null);
     hserver.start();
     Thread.sleep(1000);
     Object testInstance = context.getRequiredTestInstance();

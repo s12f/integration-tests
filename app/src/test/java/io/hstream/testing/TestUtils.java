@@ -127,6 +127,27 @@ public class TestUtils {
         .waitingFor(Wait.forLogMessage(".*LogDevice Cluster running.*", 1));
   }
 
+  static class SecurityOptions {
+    public String dir;
+    public boolean enableTls;
+    public String keyPath;
+    public String certPath;
+    public String caPath;
+
+    @Override
+    public String toString() {
+      String msg = "";
+      if (enableTls) {
+        msg +=
+            " --enable-tls " + " --tls-key-path=" + keyPath + " --tls-cert-path=" + certPath + " ";
+      }
+      if (caPath != null) {
+        msg += " --tls-ca-path=" + caPath + " ";
+      }
+      return msg;
+    }
+  }
+
   public static GenericContainer<?> makeHServer(
       String address,
       int port,
@@ -134,10 +155,12 @@ public class TestUtils {
       Path dataDir,
       String zkHost,
       String hstoreHost,
-      int serverId) {
+      int serverId,
+      SecurityOptions securityOptions) {
     return new GenericContainer<>(getHstreamImageName())
         .withNetworkMode("host")
         .withFileSystemBind(dataDir.toAbsolutePath().toString(), "/data/hstore", BindMode.READ_ONLY)
+        .withFileSystemBind(securityOptions.dir, "/data/security", BindMode.READ_ONLY)
         .withCommand(
             "bash",
             "-c",
@@ -161,6 +184,7 @@ public class TestUtils {
                 + "6440"
                 + " --log-level "
                 + "debug"
+                + securityOptions
                 + " --log-with-color"
                 + " --store-log-level "
                 + "error")
