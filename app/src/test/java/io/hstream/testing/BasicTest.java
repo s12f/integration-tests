@@ -16,6 +16,7 @@ import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
 import io.hstream.HRecord;
 import io.hstream.HStreamClient;
+import io.hstream.HStreamClientBuilder;
 import io.hstream.Producer;
 import io.hstream.ReceivedRawRecord;
 import io.hstream.Responder;
@@ -43,7 +44,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -83,9 +86,22 @@ class BasicTest {
   }
 
   @BeforeEach
-  public void setup() throws Exception {
-    logger.debug("hStreamDBUrl " + hStreamDBUrl);
-    hStreamClient = HStreamClient.builder().serviceUrl(hStreamDBUrl).build();
+  public void setup(TestInfo info) throws Exception {
+    logger.info("hStreamDBUrl " + hStreamDBUrl);
+    HStreamClientBuilder builder = HStreamClient.builder().serviceUrl(hStreamDBUrl);
+    var securityPath = getClass().getClassLoader().getResource("security").getPath();
+    Set<String> tags = info.getTags();
+    if (tags.contains("tls")) {
+      builder = builder.enableTls().tlsCaPath(securityPath + "/ca.cert.pem");
+    }
+    if (tags.contains("tls-authentication")) {
+      builder =
+          builder
+              .enableTlsAuthentication()
+              .tlsKeyPath(securityPath + "/role.key-pk8.pem")
+              .tlsCertPath(securityPath + "/signed.role.cert.pem");
+    }
+    hStreamClient = builder.build();
   }
 
   @AfterEach
@@ -1344,5 +1360,38 @@ class BasicTest {
             throw e;
           }
         });
+  }
+
+  /* TLS cases
+  Tag("tls"): enable tls in servers and client
+  Tag("tls-authentication"): enable tls authentication in servers and client
+   */
+  @Test
+  @Timeout(20)
+  @Tag("tls")
+  void testTls() {}
+
+  @Test
+  @Timeout(20)
+  @Tag("tls")
+  @Tag("tls-authentication")
+  void testTlsAuthentication() {}
+
+  @Test
+  @Timeout(20)
+  void testUntrustedServer() {
+    String caPath = getClass().getClassLoader().getResource("security/ca.cert.pem").getPath();
+    Assertions.assertThrows(
+        Exception.class, () -> HStreamClient.builder().enableTls().tlsCaPath(caPath).build());
+  }
+
+  @Test
+  @Timeout(20)
+  @Tag("tls")
+  @Tag("tls-authentication")
+  void testUntrustedClient() {
+    String caPath = getClass().getClassLoader().getResource("security/ca.cert.pem").getPath();
+    Assertions.assertThrows(
+        Exception.class, () -> HStreamClient.builder().enableTls().tlsCaPath(caPath).build());
   }
 }
