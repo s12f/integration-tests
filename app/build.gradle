@@ -37,7 +37,13 @@ gradle.projectsEvaluated {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    if (System.getProperty("tag")) {
+        useJUnitPlatform {
+            includeTags System.getProperty("tag")
+        }
+    } else {
+        useJUnitPlatform()
+    }
 }
 
 spotless {

@@ -1,12 +1,15 @@
 package io.hstream.testing;
 
+import static io.hstream.testing.TestUtils.makeClient;
 import static io.hstream.testing.TestUtils.makeHServer;
 import static io.hstream.testing.TestUtils.makeHStore;
 import static io.hstream.testing.TestUtils.makeZooKeeper;
 import static io.hstream.testing.TestUtils.printBeginFlag;
 import static io.hstream.testing.TestUtils.printEndFlag;
+import static io.hstream.testing.TestUtils.silence;
 import static io.hstream.testing.TestUtils.writeLog;
 
+import io.hstream.HStreamClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -74,24 +77,45 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
     Thread.sleep(3000);
 
     Object testInstance = context.getRequiredTestInstance();
-    testInstance
-        .getClass()
-        .getMethod("setHStreamDBUrl", String.class)
-        .invoke(testInstance, hServerUrls.stream().reduce((url1, url2) -> url1 + "," + url2).get());
-    testInstance.getClass().getMethod("setHServers", List.class).invoke(testInstance, hServers);
-    testInstance
-        .getClass()
-        .getMethod("setHServerUrls", List.class)
-        .invoke(testInstance, hServerUrls);
+    var initUrl = hServerUrls.stream().reduce((url1, url2) -> url1 + "," + url2).get();
+    silence(
+        () ->
+            testInstance
+                .getClass()
+                .getMethod("setHStreamDBUrl", String.class)
+                .invoke(testInstance, initUrl));
+    silence(
+        () ->
+            testInstance
+                .getClass()
+                .getMethod("setClient", HStreamClient.class)
+                .invoke(testInstance, makeClient(initUrl, context.getTags())));
+    silence(
+        () ->
+            testInstance
+                .getClass()
+                .getMethod("setHServers", List.class)
+                .invoke(testInstance, hServers));
+    silence(
+        () ->
+            testInstance
+                .getClass()
+                .getMethod("setHServerUrls", List.class)
+                .invoke(testInstance, hServerUrls));
 
-    testInstance
-        .getClass()
-        .getMethod("setLogMsgPathPrefix", String.class)
-        .invoke(testInstance, grp);
-    testInstance
-        .getClass()
-        .getMethod("setExtensionContext", ExtensionContext.class)
-        .invoke(testInstance, context);
+    silence(
+        () ->
+            testInstance
+                .getClass()
+                .getMethod("setLogMsgPathPrefix", String.class)
+                .invoke(testInstance, grp));
+
+    silence(
+        () ->
+            testInstance
+                .getClass()
+                .getMethod("setExtensionContext", ExtensionContext.class)
+                .invoke(testInstance, context));
   }
 
   @Override

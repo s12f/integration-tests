@@ -6,6 +6,7 @@ import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
 import io.hstream.HRecord;
 import io.hstream.HStreamClient;
+import io.hstream.HStreamClientBuilder;
 import io.hstream.Producer;
 import io.hstream.ReceivedHRecord;
 import io.hstream.ReceivedRawRecord;
@@ -26,6 +27,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -657,5 +659,35 @@ public class TestUtils {
       res.add("test_key_" + i);
     }
     return res;
+  }
+
+  public static HStreamClient makeClient(String url, Set<String> tags) {
+    logger.info("hStreamDBUrl " + url);
+    HStreamClientBuilder builder = HStreamClient.builder().serviceUrl(url);
+    var securityPath = TestUtils.class.getClassLoader().getResource("security").getPath();
+    if (tags.contains("tls")) {
+      builder = builder.enableTls().tlsCaPath(securityPath + "/ca.cert.pem");
+    }
+    if (tags.contains("tls-authentication")) {
+      builder =
+          builder
+              .enableTlsAuthentication()
+              .tlsKeyPath(securityPath + "/role.key-pk8.pem")
+              .tlsCertPath(securityPath + "/signed.role.cert.pem");
+    }
+    return builder.build();
+  }
+
+  @FunctionalInterface
+  public interface SilentRunner {
+    void run() throws Throwable;
+  }
+
+  public static void silence(SilentRunner r) {
+    try {
+      r.run();
+    } catch (Throwable e) {
+      logger.info("ignored exception:{}", e.getMessage());
+    }
   }
 }
