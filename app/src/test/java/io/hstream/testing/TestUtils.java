@@ -6,12 +6,14 @@ import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
 import io.hstream.HRecord;
 import io.hstream.HStreamClient;
+import io.hstream.HStreamClientBuilder;
 import io.hstream.Producer;
 import io.hstream.ReceivedHRecord;
 import io.hstream.ReceivedRawRecord;
 import io.hstream.Record;
 import io.hstream.Responder;
 import io.hstream.Subscription;
+import io.hstream.impl.DefaultSettings;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -20,16 +22,24 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.Logger;
@@ -211,6 +221,15 @@ public class TestUtils {
   public static void consume(
       HStreamClient client,
       String subscription,
+      long timeoutSeconds,
+      Function<ReceivedRawRecord, Boolean> handle)
+      throws Exception {
+    consumeAsync(client, subscription, randText(), handle).get(timeoutSeconds, TimeUnit.SECONDS);
+  }
+
+  public static void consume(
+      HStreamClient client,
+      String subscription,
       String name,
       long timeoutSeconds,
       Function<ReceivedRawRecord, Boolean> handle)
@@ -228,6 +247,11 @@ public class TestUtils {
       throws Exception {
     consumeAsync(client, subscription, name, handle, handleHRecord)
         .get(timeoutSeconds, TimeUnit.SECONDS);
+  }
+
+  public static CompletableFuture<Void> consumeAsync(
+      HStreamClient client, String subscription, Function<ReceivedRawRecord, Boolean> handle) {
+    return consumeAsync(client, subscription, randText(), handle, null, null);
   }
 
   public static CompletableFuture<Void> consumeAsync(
@@ -266,43 +290,39 @@ public class TestUtils {
       String name,
       Function<ReceivedRawRecord, Boolean> handle,
       Function<ReceivedHRecord, Boolean> handleHRecord,
-      Function<Responder, Void> handleResponder) {
+      java.util.function.Consumer<Responder> handleResponder) {
     CompletableFuture<Void> future = new CompletableFuture<>();
+    var stopped = new AtomicBoolean(false);
+    BiConsumer<Object, Responder> process =
+        (receivedRecord, responder) -> {
+          if (stopped.get()) {
+            return;
+          }
+          if (handleResponder != null) {
+            handleResponder.accept(responder);
+          } else {
+            responder.ack();
+          }
+          try {
+            boolean consumeNext =
+                receivedRecord instanceof ReceivedRawRecord
+                    ? handle.apply((ReceivedRawRecord) receivedRecord)
+                    : handleHRecord.apply((ReceivedHRecord) receivedRecord);
+            if (!consumeNext) {
+              stopped.set(true);
+              future.complete(null);
+            }
+          } catch (Exception e) {
+            future.completeExceptionally(e);
+          }
+        };
     var consumer =
         client
             .newConsumer()
             .subscription(subscription)
             .name(name)
-            .rawRecordReceiver(
-                (receivedRawRecord, responder) -> {
-                  if (handleResponder != null) {
-                    handleResponder.apply(responder);
-                  } else {
-                    responder.ack();
-                  }
-                  try {
-                    if (!handle.apply(receivedRawRecord)) {
-                      future.complete(null);
-                    }
-                  } catch (Exception e) {
-                    future.completeExceptionally(e);
-                  }
-                })
-            .hRecordReceiver(
-                ((receivedHRecord, responder) -> {
-                  if (handleResponder != null) {
-                    handleResponder.apply(responder);
-                  } else {
-                    responder.ack();
-                  }
-                  try {
-                    if (!handleHRecord.apply(receivedHRecord)) {
-                      future.complete(null);
-                    }
-                  } catch (Exception e) {
-                    future.completeExceptionally(e);
-                  }
-                }))
+            .rawRecordReceiver(process::accept)
+            .hRecordReceiver(process::accept)
             .build();
     consumer.addListener(
         new FailedConsumerListener(
@@ -316,6 +336,38 @@ public class TestUtils {
         (x, y) -> {
           consumer.stopAsync().awaitTerminated();
         });
+  }
+
+  public static Function<ReceivedRawRecord, Boolean> handleForKeysSync(
+      HashMap<String, RecordsPair> pairs, int count) {
+    var received = new AtomicInteger(0);
+    return r -> {
+      synchronized (pairs) {
+        var key = r.getHeader().getOrderingKey();
+        if (!pairs.containsKey(key)) {
+          pairs.put(key, new RecordsPair());
+        }
+        pairs.get(key).ids.add(r.getRecordId());
+        pairs.get(key).records.add(Arrays.toString(r.getRawRecord()));
+      }
+      return received.incrementAndGet() < count;
+    };
+  }
+
+  public static Function<ReceivedRawRecord, Boolean> handleForKeys(
+      HashMap<String, RecordsPair> pairs, CountDownLatch latch) {
+    return r -> {
+      synchronized (pairs) {
+        var key = r.getHeader().getOrderingKey();
+        if (!pairs.containsKey(key)) {
+          pairs.put(key, new RecordsPair());
+        }
+        pairs.get(key).ids.add(r.getRecordId());
+        pairs.get(key).records.add(Arrays.toString(r.getRawRecord()));
+        latch.countDown();
+        return latch.getCount() > 0;
+      }
+    };
   }
 
   public static Consumer createConsumerCollectStringPayload(
@@ -340,42 +392,198 @@ public class TestUtils {
         .build();
   }
 
-  public static ArrayList<String> doProduce(Producer producer, int payloadSize, int recordsNums) {
+  public static List<String> doProduce(Producer producer, int payloadSize, int recordsNums) {
     return produce(producer, payloadSize, recordsNums).records;
   }
 
-  public static ArrayList<String> doProduceAndGatherRid(
+  public static List<String> doProduceAndGatherRid(
       Producer producer, int payloadSize, int recordsNums) {
     return produce(producer, payloadSize, recordsNums).ids;
   }
 
   public static class RecordsPair {
-    public ArrayList<String> ids;
-    public ArrayList<String> records;
+    public List<String> ids;
+    public List<String> records;
+
+    RecordsPair() {
+      ids = new LinkedList<>();
+      records = new LinkedList<>();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      RecordsPair that = (RecordsPair) o;
+      return Objects.equals(ids, that.ids) && Objects.equals(records, that.records);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(ids, records);
+    }
+
+    @Override
+    public String toString() {
+      return "RecordsPair{" + "ids count=" + ids.size() + ", records count=" + records.size() + '}';
+    }
   }
 
   public static RecordsPair produce(Producer producer, int payloadSize, int count) {
-    return produce(producer, payloadSize, count, null);
+    return produce(producer, payloadSize, count, DefaultSettings.DEFAULT_ORDERING_KEY);
+  }
+
+  public static HashMap<String, RecordsPair> produce(
+      Producer producer, int payloadSize, int totalCount, int keysSize) {
+    return produce(producer, payloadSize, totalCount, new RobinRoundKeyGenerator(keysSize));
   }
 
   public static RecordsPair produce(Producer producer, int payloadSize, int count, String key) {
-    Random rand = new Random();
-    byte[] rRec = new byte[payloadSize];
-    var records = new ArrayList<String>();
-    List<CompletableFuture<String>> xs = new ArrayList<>(count);
-    for (int i = 0; i < count; i++) {
-      rand.nextBytes(rRec);
-      Record recordToWrite = Record.newBuilder().orderingKey(key).rawRecord(rRec).build();
-      records.add(Arrays.toString(rRec));
-      xs.add(producer.write(recordToWrite));
+    return produce(producer, payloadSize, count, () -> key).get(key);
+  }
+
+  @FunctionalInterface
+  public interface KeyGenerator {
+    String get();
+  }
+
+  public static class RobinRoundKeyGenerator implements KeyGenerator {
+    private final ArrayList<String> keys;
+    private int idx;
+
+    RobinRoundKeyGenerator(ArrayList<String> keys) {
+      this.keys = keys;
     }
 
-    RecordsPair p = new RecordsPair();
-    p.records = records;
-    ArrayList<String> ids = new ArrayList<>(count);
-    xs.forEach(x -> ids.add(x.join()));
-    p.ids = ids;
-    return p;
+    RobinRoundKeyGenerator(int keysSize) {
+      this.keys =
+          (ArrayList<String>)
+              IntStream.range(0, keysSize)
+                  .mapToObj(k -> "test_key_" + k)
+                  .collect(Collectors.toList());
+    }
+
+    @Override
+    public String get() {
+      var key = keys.get(idx);
+      idx = (idx + 1) % keys.size();
+      return key;
+    }
+  }
+
+  public static class RandomKeyGenerator implements KeyGenerator {
+    private final ArrayList<String> keys;
+    private final Random rand = new Random();
+
+    RandomKeyGenerator(ArrayList<String> keys) {
+      this.keys = keys;
+    }
+
+    RandomKeyGenerator(int keysSize) {
+      this.keys =
+          (ArrayList<String>)
+              IntStream.range(0, keysSize)
+                  .mapToObj(k -> "test_key_" + k)
+                  .collect(Collectors.toList());
+    }
+
+    @Override
+    public String get() {
+      return keys.get(rand.nextInt(keys.size()));
+    }
+  }
+
+  public static HashMap<String, RecordsPair> produce(
+      Producer producer, int payloadSize, int totalCount, KeyGenerator kg) {
+    Random rand = new Random();
+    byte[] rRec = new byte[payloadSize];
+    var records = new HashMap<String, LinkedList<String>>();
+    var futures = new HashMap<String, List<CompletableFuture<String>>>();
+    for (int i = 0; i < totalCount; i++) {
+      var key = kg.get();
+      rand.nextBytes(rRec);
+      Record recordToWrite = Record.newBuilder().orderingKey(key).rawRecord(rRec).build();
+      if (!futures.containsKey(key)) {
+        futures.put(key, new LinkedList<>());
+        records.put(key, new LinkedList<>());
+      }
+      futures.get(key).add(producer.write(recordToWrite));
+      records.get(key).add(Arrays.toString(rRec));
+    }
+
+    var res = new HashMap<String, RecordsPair>();
+    futures.forEach(
+        (key, v) -> {
+          RecordsPair p = new RecordsPair();
+          p.records = records.get(key);
+          var ids = new LinkedList<String>();
+          v.forEach(x -> ids.add(x.join()));
+          p.ids = ids;
+          res.put(key, p);
+        });
+    return res;
+  }
+
+  @FunctionalInterface
+  public interface RecordGenerator {
+    Record get();
+  }
+
+  public static class RandomSizeRecordGenerator implements RecordGenerator {
+    int beg;
+    int end;
+    Random rand = new Random();
+
+    RandomSizeRecordGenerator(int begIncluded, int endExcluded) {
+      assert begIncluded > 0 && endExcluded > begIncluded;
+      this.beg = begIncluded;
+      this.end = endExcluded;
+    }
+
+    @Override
+    public Record get() {
+      var size = rand.nextInt(end - beg) + beg;
+      byte[] rRec = new byte[size];
+      return Record.newBuilder()
+          .rawRecord(rRec)
+          .orderingKey(DefaultSettings.DEFAULT_ORDERING_KEY)
+          .build();
+    }
+  }
+
+  public static HashMap<String, RecordsPair> produce(
+      Producer producer, int count, RecordGenerator rg) {
+    var records = new ArrayList<String>();
+    var futures = new HashMap<String, List<CompletableFuture<String>>>();
+    for (int i = 0; i < count; i++) {
+      var record = rg.get();
+      var key = record.getOrderingKey();
+      if (record.isRawRecord()) {
+        records.add(Arrays.toString(record.getRawRecord()));
+      } else {
+        records.add(record.getHRecord().toString());
+      }
+      if (!futures.containsKey(key)) {
+        futures.put(key, new LinkedList<>());
+      }
+      futures.get(key).add(producer.write(record));
+    }
+
+    var res = new HashMap<String, RecordsPair>();
+    futures.forEach(
+        (key, v) -> {
+          RecordsPair p = new RecordsPair();
+          p.records = records;
+          var ids = new LinkedList<String>();
+          v.forEach(x -> ids.add(x.join()));
+          p.ids = ids;
+          res.put(key, p);
+        });
+    return res;
+  }
+
+  public static BufferedProducer makeBufferedProducer(HStreamClient client, String streamName) {
+    return client.newBufferedProducer().stream(streamName).build();
   }
 
   public static BufferedProducer makeBufferedProducer(
@@ -421,5 +629,65 @@ public class TestUtils {
 
   public static void printEndFlag(ExtensionContext context) {
     printFlag("end", context);
+  }
+
+  public static boolean diffAndLogResultSets(
+      HashMap<String, TestUtils.RecordsPair> l, HashMap<String, TestUtils.RecordsPair> r) {
+    if (!l.keySet().equals(r.keySet())) {
+      logger.info("keySet is not same, l:{}, r:{}", l.keySet(), r.keySet());
+      return false;
+    }
+    for (var k : l.keySet()) {
+      if (!l.get(k).ids.equals(r.get(k).ids)) {
+        logger.info("key:{}, ids is not same \n l:{} \n r:{}", k, l.get(k).ids, r.get(k).ids);
+        return false;
+      }
+      if (!l.get(k).records.equals(r.get(k).records)) {
+        logger.info(
+            "key:{}, records is not same \n l:{} \n r:{}", k, r.get(k).records, r.get(k).records);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public static ArrayList<String> generateKeysIncludingDefaultKey(int size) {
+    assert size > 0;
+    var res = new ArrayList<String>(size);
+    res.add(DefaultSettings.DEFAULT_ORDERING_KEY);
+    for (int i = 1; i < size; i++) {
+      res.add("test_key_" + i);
+    }
+    return res;
+  }
+
+  public static HStreamClient makeClient(String url, Set<String> tags) {
+    logger.info("hStreamDBUrl " + url);
+    HStreamClientBuilder builder = HStreamClient.builder().serviceUrl(url);
+    var securityPath = TestUtils.class.getClassLoader().getResource("security").getPath();
+    if (tags.contains("tls")) {
+      builder = builder.enableTls().tlsCaPath(securityPath + "/ca.cert.pem");
+    }
+    if (tags.contains("tls-authentication")) {
+      builder =
+          builder
+              .enableTlsAuthentication()
+              .tlsKeyPath(securityPath + "/role.key-pk8.pem")
+              .tlsCertPath(securityPath + "/signed.role.cert.pem");
+    }
+    return builder.build();
+  }
+
+  @FunctionalInterface
+  public interface SilentRunner {
+    void run() throws Throwable;
+  }
+
+  public static void silence(SilentRunner r) {
+    try {
+      r.run();
+    } catch (Throwable e) {
+      logger.info("ignored exception:{}", e.getMessage());
+    }
   }
 }
