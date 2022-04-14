@@ -41,7 +41,6 @@ public class Consumer {
     this.client = client;
   }
 
-  @Tag("abc")
   @Test
   @Timeout(20)
   void testCreateConsumerOnDeletedSubscriptionShouldFail() throws Exception {
@@ -170,11 +169,11 @@ public class Consumer {
             },
             null,
             responder -> {});
-    Thread.sleep(3000);
+    Thread.sleep(4000);
     synchronized (received) {
       Assertions.assertEquals(1, received.ids.size());
     }
-    Thread.sleep(4000);
+    Thread.sleep(5000);
     future.complete(null);
     Assertions.assertEquals(2, received.ids.size());
     Assertions.assertEquals(received.ids.get(0), received.ids.get(1));
@@ -210,7 +209,7 @@ public class Consumer {
                 responder.ack();
               }
             });
-    Thread.sleep(8000);
+    Thread.sleep(9000);
     future.complete(null);
     logger.info("dropped:{}", dropped.get());
     Assertions.assertEquals(recordCount + dropped.get(), received.get());
@@ -312,7 +311,7 @@ public class Consumer {
                 })
             .build();
     consumer.startAsync().awaitRunning();
-    Thread.sleep(7000);
+    Thread.sleep(9000);
     consumer.stopAsync().awaitTerminated();
     Assertions.assertEquals(count, received.get());
   }
