@@ -503,6 +503,8 @@ public class TestUtils {
 
   public static HashMap<String, RecordsPair> produce(
       Producer producer, int payloadSize, int totalCount, KeyGenerator kg) {
+    assert totalCount > 0;
+    assert payloadSize > 0;
     Random rand = new Random();
     byte[] rRec = new byte[payloadSize];
     var records = new HashMap<String, LinkedList<String>>();

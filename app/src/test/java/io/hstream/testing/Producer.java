@@ -186,7 +186,7 @@ public class Producer {
   void testNoBatchWriteInForLoopShouldNotStuck() throws Exception {
     final String streamName = randStream(client);
     io.hstream.Producer producer = client.newProducer().stream(streamName).build();
-    var records = doProduce(producer, 128, globalRandom.nextInt(100));
+    var records = doProduce(producer, 128, globalRandom.nextInt(100) + 1);
 
     final String subscription = randSubscription(client, streamName);
     List<String> res = new ArrayList<>();
