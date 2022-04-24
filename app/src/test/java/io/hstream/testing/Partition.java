@@ -28,7 +28,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -152,7 +151,6 @@ public class Partition {
     Assertions.assertTrue(diffAndLogResultSets(pairs, received));
   }
 
-  @Disabled
   @Test
   @Timeout(60)
   public void testConsumerInTurn() throws Exception {
@@ -243,10 +241,9 @@ public class Partition {
     f3.complete(null);
     Assertions.assertTrue(done);
 
-    Assertions.assertEquals(wrote, received);
+    Assertions.assertTrue(diffAndLogResultSets(wrote, received));
   }
 
-  @Disabled
   @Timeout(60)
   @Test
   void testLargeConsumerGroup() throws Exception {
@@ -292,7 +289,6 @@ public class Partition {
     Assertions.assertTrue(signal.await(20, TimeUnit.SECONDS), "failed to receive all records");
   }
 
-  @Disabled
   @Timeout(60)
   @Test
   void testDynamicConsumerToConsumerGroup() throws Exception {
@@ -325,7 +321,7 @@ public class Partition {
 
     Assertions.assertTrue(signal.await(20, TimeUnit.SECONDS), "failed to receive all records");
     futures.forEach(it -> it.complete(null));
-    Assertions.assertEquals(pairs, res);
+    Assertions.assertTrue(diffAndLogResultSets(pairs, res));
   }
 
   @Test
