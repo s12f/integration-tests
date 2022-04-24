@@ -256,8 +256,7 @@ public class Consumer {
     // so the count next consumer received should not greater than recordCount - c1.
     Assertions.assertThrows(
         TimeoutException.class,
-        () ->
-            consume(client, sub, "c2", 6, r -> received.incrementAndGet() < recordCount - c1 + 1));
+        () -> consume(client, sub, "c2", 6, r -> received.incrementAndGet() < recordCount + 1));
   }
 
   @Test
