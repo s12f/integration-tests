@@ -235,6 +235,7 @@ public class Consumer {
         TimeoutException.class, () -> consume(client, subscriptionName, 6, r -> false));
   }
 
+  @Disabled("client acks")
   @Test
   @Timeout(60)
   @Tag("ack")
