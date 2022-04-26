@@ -219,23 +219,35 @@ public class TestUtils {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // start an async consumers and waiting until received first record
-  public static List<Consumer> activateSubscription(
-      HStreamClient client, String subscription, int consumerNum) throws Exception {
-    var res = new ArrayList<Consumer>(consumerNum);
-    for (int i = 0; i < consumerNum; i++) {
-      var latch = new CountDownLatch(1);
-      var c =
-          client
-              .newConsumer()
-              .subscription(subscription)
-              .rawRecordReceiver((x, y) -> latch.countDown())
-              .build();
-      c.startAsync().awaitRunning();
-      Assertions.assertTrue(latch.await(10, TimeUnit.SECONDS));
-    }
-    ;
-    return res;
+
+  public static void createStreamSucceeds(HStreamClient client, int sizeExpected, String stream) {
+    List<io.hstream.Stream> streams = client.listStreams();
+    Assertions.assertEquals(sizeExpected, streams.size());
+    Assertions.assertTrue(
+        streams.stream().map(s -> s.getStreamName()).collect(Collectors.toList()).contains(stream));
+  }
+
+  public static void deleteStreamSucceeds(HStreamClient client, int sizeExpected, String stream) {
+    List<io.hstream.Stream> streams = client.listStreams();
+    Assertions.assertEquals(sizeExpected, streams.size());
+    Assertions.assertFalse(
+        streams.stream().map(s -> s.getStreamName()).collect(Collectors.toList()).contains(stream));
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // start an async consumer and waiting until received first record
+  public static Consumer activateSubscription(HStreamClient client, String subscription)
+      throws Exception {
+    var latch = new CountDownLatch(1);
+    var c =
+        client
+            .newConsumer()
+            .subscription(subscription)
+            .rawRecordReceiver((x, y) -> latch.countDown())
+            .build();
+    c.startAsync().awaitRunning();
+    Assertions.assertTrue(latch.await(10, TimeUnit.SECONDS));
+    return c;
   }
 
   public static void consume(
