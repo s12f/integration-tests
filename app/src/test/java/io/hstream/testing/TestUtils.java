@@ -41,6 +41,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -218,12 +219,23 @@ public class TestUtils {
   }
 
   // -----------------------------------------------------------------------------------------------
-  public static void activateSubscription(
+  // start an async consumers and waiting until received first record
+  public static List<Consumer> activateSubscription(
       HStreamClient client, String subscription, int consumerNum) throws Exception {
+    var res = new ArrayList<Consumer>(consumerNum);
     for (int i = 0; i < consumerNum; i++) {
-      String name = "test_consumer_" + randText();
-      consume(client, subscription, name, 10, x -> false);
+      var latch = new CountDownLatch(1);
+      var c =
+          client
+              .newConsumer()
+              .subscription(subscription)
+              .rawRecordReceiver((x, y) -> latch.countDown())
+              .build();
+      c.startAsync().awaitRunning();
+      Assertions.assertTrue(latch.await(10, TimeUnit.SECONDS));
     }
+    ;
+    return res;
   }
 
   public static void consume(
