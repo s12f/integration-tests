@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -236,7 +237,6 @@ public class Consumer {
         TimeoutException.class, () -> consume(client, subscriptionName, 6, r -> false));
   }
 
-  @Disabled("client acks")
   @Test
   @Timeout(60)
   @Tag("ack")
@@ -250,10 +250,32 @@ public class Consumer {
     logger.info("wrote {} records", recordCount);
 
     var received = new AtomicInteger();
+    var latch = new CountDownLatch(1);
     int c1 = 500;
-    consume(client, sub, "c1", 20, r -> received.incrementAndGet() < c1);
-    Thread.sleep(7000);
+    var consumer1 =
+        client
+            .newConsumer()
+            .subscription(sub)
+            .rawRecordReceiver(
+                (a, responder) -> {
+                  if (received.get() < c1) {
+                    received.incrementAndGet();
+                    responder.ack();
+                  } else {
+                    latch.countDown();
+                  }
+                })
+            .build();
+    consumer1.startAsync().awaitRunning();
+    Assertions.assertTrue(latch.await(10, TimeUnit.SECONDS));
+    // sleep for consumer to send all ACKs
+    Thread.sleep(3000);
+    consumer1.stopAsync().awaitTerminated();
+
+    // waiting for server to handle ACKs
+    Thread.sleep(6000);
     logger.info("received {} records", received.get());
+
     // after consuming some records, and stopping consumer, ACKs should be sent to servers,
     // so the count next consumer received should not greater than recordCount - c1.
     Assertions.assertThrows(
