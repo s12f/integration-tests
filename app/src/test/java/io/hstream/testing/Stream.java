@@ -85,6 +85,7 @@ public class Stream {
           () -> {
             HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build();
             Assertions.assertNotNull(c.listStreams());
+            silence(c::close);
           });
     }
   }
@@ -102,9 +103,7 @@ public class Stream {
       threads.add(
           new Thread(
               () -> {
-                HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build();
-
-                try {
+                try (HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build()) {
                   c.createStream(stream);
                 } catch (Exception e) {
                   synchronized (exceptions) {
@@ -140,8 +139,7 @@ public class Stream {
       threads.add(
           new Thread(
               () -> {
-                HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build();
-                try {
+                try (HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build()) {
                   c.deleteStream(stream);
                 } catch (Exception e) {
                   synchronized (exceptions) {
@@ -171,8 +169,7 @@ public class Stream {
       threads.add(
           new Thread(
               () -> {
-                HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build();
-                try {
+                try (HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build()) {
                   c.deleteStream(stream, true);
                 } catch (Exception e) {
                   synchronized (exceptions) {
@@ -203,6 +200,7 @@ public class Stream {
       int finalI = i;
       Assertions.assertThrows(Exception.class, () -> clients.get(finalI).deleteStream(stream));
     }
+    clients.forEach(x -> silence(x::close));
   }
 
   @Test

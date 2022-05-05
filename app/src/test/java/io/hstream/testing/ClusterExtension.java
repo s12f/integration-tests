@@ -35,6 +35,8 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
   private String grp;
   private long beginTime;
 
+  private HStreamClient client;
+
   @Override
   public void beforeEach(ExtensionContext context) throws Exception {
     beginTime = System.currentTimeMillis();
@@ -84,12 +86,14 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
                 .getClass()
                 .getMethod("setHStreamDBUrl", String.class)
                 .invoke(testInstance, initUrl));
+
+    client = makeClient(initUrl, context.getTags());
     silence(
         () ->
             testInstance
                 .getClass()
                 .getMethod("setClient", HStreamClient.class)
-                .invoke(testInstance, makeClient(initUrl, context.getTags())));
+                .invoke(testInstance, client));
     silence(
         () ->
             testInstance
@@ -120,6 +124,7 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
 
   @Override
   public void afterEach(ExtensionContext context) throws Exception {
+    client.close();
 
     for (int i = 0; i < hServers.size(); i++) {
       var hServer = hServers.get(i);
