@@ -229,7 +229,7 @@ public class Consumer {
     produce(producer, 128, recordCount);
     producer.close();
 
-    var latch = new CountDownLatch(0);
+    var latch = new CountDownLatch(recordCount);
     var f1 =
         consumeAsync(
             client,
