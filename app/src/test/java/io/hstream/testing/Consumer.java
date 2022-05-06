@@ -229,8 +229,19 @@ public class Consumer {
     produce(producer, 128, recordCount);
     producer.close();
 
-    var received = new AtomicInteger();
-    consume(client, subscriptionName, 20, r -> received.incrementAndGet() < recordCount);
+    var latch = new CountDownLatch(0);
+    var f1 =
+        consumeAsync(
+            client,
+            subscriptionName,
+            r -> {
+              latch.countDown();
+              return true;
+            });
+    Assertions.assertTrue(latch.await(10, TimeUnit.SECONDS));
+    // waiting for consumer to flush ACKs
+    Thread.sleep(3000);
+    f1.complete(null);
     // after consuming all records, and stopping consumer, ACKs should be sent to servers,
     // so next consumer should not receive any new records except ackSender resend.
     Assertions.assertThrows(
