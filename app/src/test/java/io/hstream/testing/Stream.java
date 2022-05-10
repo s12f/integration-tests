@@ -6,8 +6,6 @@ import io.hstream.HStreamClient;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -73,134 +71,45 @@ public class Stream {
     Assertions.assertThrows(Throwable.class, () -> client.deleteStream(randText(), true));
   }
 
-  // TODO: serviceUrl
   @Test
   @Timeout(60)
-  void testMultiThreadListStream() throws Exception {
+  void testMultiThreadListStream() throws Throwable {
     String stream = randStream(client);
     createStreamSucceeds(client, 1, stream);
-    ExecutorService executor = Executors.newCachedThreadPool();
-    for (String hServerUrl : hServerUrls) {
-      executor.execute(
-          () -> {
-            HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build();
-            Assertions.assertNotNull(c.listStreams());
-            silence(c::close);
-          });
-    }
+    assertExceptions(runWithThreads(3, client::listStreams));
   }
 
-  // TODO: serviceUrl
   @Test
   @Timeout(60)
   void testMultiThreadCreateSameStream() throws Exception {
-    ArrayList<Exception> exceptions = new ArrayList<>();
-
     String stream = randText();
-
-    ArrayList<Thread> threads = new ArrayList<>();
-    for (String hServerUrl : hServerUrls) {
-      threads.add(
-          new Thread(
-              () -> {
-                try (HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build()) {
-                  c.createStream(stream);
-                } catch (Exception e) {
-                  synchronized (exceptions) {
-                    exceptions.add(e);
-                  }
-                }
-              }));
-    }
-
-    for (Thread thread : threads) {
-      thread.start();
-    }
-
-    for (Thread thread : threads) {
-      thread.join();
-    }
-
-    Assertions.assertEquals(hServerUrls.size() - 1, exceptions.size());
+    var es = runWithThreads(3, () -> client.createStream(stream));
     createStreamSucceeds(client, 1, stream);
+    Assertions.assertEquals(hServerUrls.size() - 1, es.size());
   }
 
-  // TODO: serviceUrl
   @Test
   @Timeout(60)
   void testMultiThreadDeleteSameStream() throws Exception {
     String stream = randStream(client);
     createStreamSucceeds(client, 1, stream);
 
-    ArrayList<Exception> exceptions = new ArrayList<>();
-    ArrayList<Thread> threads = new ArrayList<>();
-
-    for (String hServerUrl : hServerUrls) {
-      threads.add(
-          new Thread(
-              () -> {
-                try (HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build()) {
-                  c.deleteStream(stream);
-                } catch (Exception e) {
-                  synchronized (exceptions) {
-                    exceptions.add(e);
-                  }
-                }
-              }));
-    }
-
-    for (Thread thread : threads) thread.start();
-    for (Thread thread : threads) thread.join();
+    var es = runWithThreads(3, () -> client.deleteStream(stream));
 
     deleteStreamSucceeds(client, 0, stream);
-    Assertions.assertEquals(hServerUrls.size() - 1, exceptions.size());
+    Assertions.assertEquals(hServerUrls.size() - 1, es.size());
   }
 
   @Test
   @Timeout(60)
   void testMultiThreadForceDeleteSameStream() throws Exception {
     String stream = randStream(client);
-    randSubscription(client, stream);
+    createStreamSucceeds(client, 1, stream);
 
-    ArrayList<Exception> exceptions = new ArrayList<>();
-    ArrayList<Thread> threads = new ArrayList<>();
-
-    for (String hServerUrl : hServerUrls) {
-      threads.add(
-          new Thread(
-              () -> {
-                try (HStreamClient c = HStreamClient.builder().serviceUrl(hServerUrl).build()) {
-                  c.deleteStream(stream, true);
-                } catch (Exception e) {
-                  synchronized (exceptions) {
-                    exceptions.add(e);
-                  }
-                }
-              }));
-    }
-
-    for (Thread thread : threads) thread.start();
-    for (Thread thread : threads) thread.join();
+    var es = runWithThreads(3, () -> client.deleteStream(stream, true));
 
     deleteStreamSucceeds(client, 0, stream);
-    Assertions.assertEquals(hServerUrls.size() - 1, exceptions.size());
-  }
-
-  // TODO: serviceUrl
-  @Test
-  @Timeout(60)
-  void testCreateThenDeleteStreamFromDifferentServerUrl() throws Exception {
-    ArrayList<HStreamClient> clients = new ArrayList<>();
-    for (String hServerUrl : hServerUrls) {
-      clients.add(HStreamClient.builder().serviceUrl(hServerUrl).build());
-    }
-    String stream = randStream(clients.get(0));
-    clients.get(1).deleteStream(stream);
-    for (int i = 2; i < clients.size(); i++) {
-      int finalI = i;
-      Assertions.assertThrows(Exception.class, () -> clients.get(finalI).deleteStream(stream));
-    }
-    clients.forEach(x -> silence(x::close));
+    Assertions.assertEquals(hServerUrls.size() - 1, es.size());
   }
 
   @Test

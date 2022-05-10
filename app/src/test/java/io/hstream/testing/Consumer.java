@@ -141,12 +141,6 @@ public class Consumer {
     Assertions.assertEquals(records, res);
   }
 
-  // TODO: serviceUrl
-  @Disabled("Can't connect to a specific server")
-  @Test
-  @Timeout(60)
-  void testWriteRawThenReadFromDifferentServerUrl() throws Exception {}
-
   @Test
   @Timeout(60)
   @Tag("ack")

@@ -1,6 +1,8 @@
 package io.hstream.testing;
 
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.Service;
+import com.google.protobuf.ByteString;
 import io.hstream.BatchSetting;
 import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
@@ -14,6 +16,11 @@ import io.hstream.Record;
 import io.hstream.Responder;
 import io.hstream.Subscription;
 import io.hstream.impl.DefaultSettings;
+import io.hstream.internal.AppendRequest;
+import io.hstream.internal.HStreamApiGrpc;
+import io.hstream.internal.HStreamRecord;
+import io.hstream.internal.HStreamRecordHeader;
+import io.hstream.internal.Stream;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -69,6 +76,13 @@ public class TestUtils {
     return buildRecord(randBytes());
   }
 
+  public static AppendRequest randAppendRequest(String streamName) {
+    var header = HStreamRecordHeader.newBuilder().setFlag(HStreamRecordHeader.Flag.RAW).build();
+    var payload = ByteString.copyFromUtf8(randText());
+    var r = HStreamRecord.newBuilder().setHeader(header).setPayload(payload).build();
+    return AppendRequest.newBuilder().setStreamName(streamName).addRecords(r).build();
+  }
+
   public static Record buildRecord(byte[] xs) {
     return Record.newBuilder().rawRecord(xs).build();
   }
@@ -81,6 +95,12 @@ public class TestUtils {
     String streamName = "test_stream_" + randText();
     c.createStream(streamName, (short) 3);
     return streamName;
+  }
+
+  public static ListenableFuture<Stream> randStream(HStreamApiGrpc.HStreamApiFutureStub stub) {
+    String streamName = "test_stream_" + randText();
+    var req = Stream.newBuilder().setStreamName(streamName).setReplicationFactor(3).build();
+    return stub.createStream(req);
   }
 
   public static String randSubscriptionWithTimeout(
@@ -208,8 +228,10 @@ public class TestUtils {
       throws Exception {
     String testClassName = context.getRequiredTestClass().getSimpleName();
     String testName = context.getTestMethod().get().getName();
-    String fileName = "../.logs/" + testClassName + "/" + testName + "/" + grp + "/" + entryName;
-    logger.info("log to " + fileName);
+    String filePathFromProject =
+        ".logs/" + testClassName + "/" + testName + "/" + grp + "/" + entryName;
+    logger.info("log to " + filePathFromProject);
+    String fileName = "../" + filePathFromProject;
 
     File file = new File(fileName);
     file.getParentFile().mkdirs();
@@ -728,15 +750,60 @@ public class TestUtils {
   }
 
   @FunctionalInterface
-  public interface SilentRunner {
+  public interface ThrowableRunner {
     void run() throws Throwable;
   }
 
-  public static void silence(SilentRunner r) {
+  public static void silence(ThrowableRunner r) {
     try {
       r.run();
     } catch (Throwable e) {
       logger.info("ignored exception:{}", e.getMessage());
     }
+  }
+
+  // run with multi threads, and return the exceptions
+  public static List<Throwable> runWithThreads(int threadCount, ThrowableRunner runner)
+      throws InterruptedException {
+    assert threadCount > 0;
+    var es = new LinkedList<Throwable>();
+    var ts = new ArrayList<Thread>(threadCount);
+    for (int i = 0; i < threadCount; i++) {
+      ts.add(
+          new Thread(
+              () -> {
+                try {
+                  runner.run();
+                } catch (Throwable e) {
+                  synchronized (es) {
+                    es.add(e);
+                  }
+                }
+              }));
+    }
+    ts.forEach(Thread::start);
+    for (var t : ts) {
+      t.join();
+    }
+    return es;
+  }
+
+  public static void assertExceptions(List<Throwable> es) throws Throwable {
+    if (es != null && !es.isEmpty()) {
+      logger.info("caught exceptions:{}", es);
+      throw es.get(0);
+    }
+  }
+
+  public static <T> List<Throwable> waitFutures(List<ListenableFuture<T>> fs) {
+    var es = new LinkedList<Throwable>();
+    for (var f : fs) {
+      try {
+        f.get();
+      } catch (Throwable e) {
+        es.add(e);
+      }
+    }
+    return es;
   }
 }
