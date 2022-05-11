@@ -1,5 +1,6 @@
 package io.hstream.testing;
 
+import static io.hstream.testing.TestUtils.assertGrpcException;
 import static io.hstream.testing.TestUtils.createStreamSucceeds;
 import static io.hstream.testing.TestUtils.deleteStreamSucceeds;
 import static io.hstream.testing.TestUtils.randAppendRequest;
@@ -10,17 +11,22 @@ import static io.hstream.testing.TestUtils.waitFutures;
 import com.google.protobuf.Empty;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Status;
 import io.hstream.HStreamClient;
+import io.hstream.internal.AppendRequest;
 import io.hstream.internal.DeleteStreamRequest;
 import io.hstream.internal.HStreamApiGrpc;
+import io.hstream.internal.HStreamRecord;
 import io.hstream.internal.LookupStreamRequest;
-import java.util.LinkedList;
+import io.hstream.internal.ServerNode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -35,8 +41,8 @@ public class ClusterTest {
   private HStreamClient client;
   private List<String> hServerUrls;
   private final Random globalRandom = new Random();
-  private final List<ManagedChannel> channels = new LinkedList<>();
-  private final List<HStreamApiGrpc.HStreamApiFutureStub> stubs = new LinkedList<>();
+  private final List<ManagedChannel> channels = new ArrayList<>();
+  private final List<HStreamApiGrpc.HStreamApiFutureStub> stubs = new ArrayList<>();
 
   public void setClient(HStreamClient client) {
     this.client = client;
@@ -44,6 +50,19 @@ public class ClusterTest {
 
   public void setHServerUrls(List<String> hServerUrls) {
     this.hServerUrls = hServerUrls;
+  }
+
+  private HStreamApiGrpc.HStreamApiFutureStub getStub(String url) {
+    for (int i = 0; i < hServerUrls.size(); i++) {
+      if (hServerUrls.get(i).equals(url)) {
+        return stubs.get(i);
+      }
+    }
+    return null;
+  }
+
+  private HStreamApiGrpc.HStreamApiFutureStub getStub(ServerNode node) {
+    return getStub(node.getHost() + ":" + node.getPort());
   }
 
   @BeforeEach
@@ -159,6 +178,40 @@ public class ClusterTest {
             stubs
                 .get(2)
                 .lookupStream(LookupStreamRequest.newBuilder().setStreamName(stream).build())
+                .get());
+  }
+
+  // --------------------------------------------------------------------------------------------
+  // Append
+  @Disabled("INVALID_ARGUMENT")
+  @Test
+  @Timeout(60)
+  void testAppendEmptyRequest() throws Throwable {
+    assertGrpcException(
+        Status.INVALID_ARGUMENT,
+        () -> stubs.get(0).append(AppendRequest.getDefaultInstance()).get());
+  }
+
+  @Disabled("INVALID_ARGUMENT")
+  @Test
+  @Timeout(60)
+  void testAppendInvalidRecord() throws Throwable {
+    var stub = stubs.get(0);
+    var stream = randStream(stub).get().getStreamName();
+    var node =
+        stub.lookupStream(LookupStreamRequest.newBuilder().setStreamName(stream).build())
+            .get()
+            .getServerNode();
+    var appendStub = getStub(node);
+    assertGrpcException(
+        Status.INVALID_ARGUMENT,
+        () ->
+            appendStub
+                .append(
+                    AppendRequest.newBuilder()
+                        .setStreamName(stream)
+                        .addRecords(HStreamRecord.newBuilder().build())
+                        .build())
                 .get());
   }
 

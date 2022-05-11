@@ -3,6 +3,9 @@ package io.hstream.testing;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.Service;
 import com.google.protobuf.ByteString;
+import io.grpc.Status;
+import io.grpc.StatusException;
+import io.grpc.StatusRuntimeException;
 import io.hstream.BatchSetting;
 import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
@@ -805,5 +808,32 @@ public class TestUtils {
       }
     }
     return es;
+  }
+
+  public static Throwable getRootCause(Throwable e) {
+    Objects.requireNonNull(e);
+    Throwable res = e;
+    while (res.getCause() != null && res.getCause() != res) {
+      res = res.getCause();
+    }
+    return res;
+  }
+
+  public static void assertGrpcException(Status expectedStatus, ThrowableRunner runner) {
+    try {
+      runner.run();
+    } catch (Throwable e) {
+      logger.info("e:{}", e.getMessage());
+      var re = getRootCause(e);
+      if (re instanceof StatusRuntimeException) {
+        Assertions.assertEquals(
+            expectedStatus.getCode(), ((StatusRuntimeException) re).getStatus().getCode());
+      } else if (re instanceof StatusException) {
+        Assertions.assertEquals(
+            expectedStatus.getCode(), ((StatusException) re).getStatus().getCode());
+      } else {
+        Assertions.fail("invalid Grpc Exception", e);
+      }
+    }
   }
 }
