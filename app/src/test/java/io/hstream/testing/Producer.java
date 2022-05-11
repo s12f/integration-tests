@@ -1,5 +1,6 @@
 package io.hstream.testing;
 
+import static io.hstream.testing.TestUtils.assertExceptions;
 import static io.hstream.testing.TestUtils.buildRecord;
 import static io.hstream.testing.TestUtils.consume;
 import static io.hstream.testing.TestUtils.doProduce;
@@ -9,6 +10,7 @@ import static io.hstream.testing.TestUtils.produce;
 import static io.hstream.testing.TestUtils.randRawRec;
 import static io.hstream.testing.TestUtils.randStream;
 import static io.hstream.testing.TestUtils.randSubscription;
+import static io.hstream.testing.TestUtils.runWithThreads;
 
 import io.hstream.BatchSetting;
 import io.hstream.BufferedProducer;
@@ -20,6 +22,7 @@ import io.hstream.Stream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
@@ -238,45 +241,31 @@ public class Producer {
     Assertions.assertEquals(input, output);
   }
 
-  // TODO: multi-thread
   @Test
   @Timeout(60)
-  void testWriteRawBatchMultiThread() throws Exception {
+  void testWriteRawBatchMultiThread() throws Throwable {
     BufferedProducer producer =
         client.newBufferedProducer().stream(randStream(client))
             .batchSetting(BatchSetting.newBuilder().recordCountLimit(10).ageLimit(10).build())
             .build();
-    Random rand = new Random();
-    final int cnt = 100;
-    var futures = new CompletableFuture[100];
-
-    Thread t0 =
-        new Thread(
+    var futures = new LinkedList<CompletableFuture<String>>();
+    assertExceptions(
+        runWithThreads(
+            10,
             () -> {
-              for (int i = 0; i < cnt / 2; i++) {
+              Random rand = new Random();
+              var fs = new LinkedList<CompletableFuture<String>>();
+              for (int i = 0; i < 100; i++) {
                 byte[] rRec = new byte[128];
                 rand.nextBytes(rRec);
-                futures[i] = producer.write(buildRecord(rRec));
+                fs.add(producer.write(buildRecord(rRec)));
               }
-            });
-
-    Thread t1 =
-        new Thread(
-            () -> {
-              for (int i = cnt / 2; i < cnt; i++) {
-                byte[] rRec = new byte[128];
-                rand.nextBytes(rRec);
-                futures[i] = producer.write(buildRecord(rRec));
+              synchronized (futures) {
+                futures.addAll(fs);
               }
-            });
-
-    t0.start();
-    t1.start();
-    t0.join();
-    t1.join();
-    producer.close();
-    for (int i = 0; i < cnt; i++) {
-      Assertions.assertNotNull(futures[i]);
+            }));
+    for (var f : futures) {
+      Assertions.assertNotNull(f.get());
     }
   }
 

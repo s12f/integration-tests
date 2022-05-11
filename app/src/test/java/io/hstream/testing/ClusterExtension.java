@@ -124,8 +124,10 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
 
   @Override
   public void afterEach(ExtensionContext context) throws Exception {
-    client.close();
+    Thread.sleep(100);
 
+    client.close();
+    // waiting for servers to flush logs
     for (int i = 0; i < hServers.size(); i++) {
       var hServer = hServers.get(i);
       writeLog(context, "hserver-" + i, grp, hServer.getLogs());
