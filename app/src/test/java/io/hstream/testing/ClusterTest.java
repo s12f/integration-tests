@@ -8,7 +8,6 @@ import static io.hstream.testing.TestUtils.randStream;
 import static io.hstream.testing.TestUtils.randText;
 import static io.hstream.testing.TestUtils.waitFutures;
 
-import com.google.protobuf.Empty;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
@@ -17,6 +16,7 @@ import io.hstream.internal.AppendRequest;
 import io.hstream.internal.DeleteStreamRequest;
 import io.hstream.internal.HStreamApiGrpc;
 import io.hstream.internal.HStreamRecord;
+import io.hstream.internal.ListStreamsRequest;
 import io.hstream.internal.LookupStreamRequest;
 import io.hstream.internal.ServerNode;
 import java.util.ArrayList;
@@ -88,8 +88,10 @@ public class ClusterTest {
   void testMultiThreadListStream() throws Exception {
     String stream = randStream(client);
     createStreamSucceeds(client, 1, stream);
-    var req = Empty.getDefaultInstance();
-    var fs = stubs.stream().map(s -> s.listStreams(req)).collect(Collectors.toList());
+    var fs =
+        stubs.stream()
+            .map(s -> s.listStreams(ListStreamsRequest.newBuilder().build()))
+            .collect(Collectors.toList());
     for (var f : fs) {
       Assertions.assertEquals(f.get().getStreamsList().size(), 1);
     }
