@@ -16,7 +16,6 @@ import io.hstream.Responder;
 import io.hstream.Subscription;
 import io.hstream.impl.DefaultSettings;
 import io.hstream.internal.*;
-import io.hstream.internal.Stream;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
