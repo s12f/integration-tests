@@ -2,10 +2,6 @@ package io.hstream.testing;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.Service;
-import com.google.protobuf.ByteString;
-import io.grpc.Status;
-import io.grpc.StatusException;
-import io.grpc.StatusRuntimeException;
 import io.hstream.BatchSetting;
 import io.hstream.BufferedProducer;
 import io.hstream.Consumer;
@@ -20,7 +16,6 @@ import io.hstream.Responder;
 import io.hstream.Subscription;
 import io.hstream.impl.DefaultSettings;
 import io.hstream.internal.*;
-import io.hstream.internal.Stream;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -71,13 +66,6 @@ public class TestUtils {
     return buildRecord(randBytes());
   }
 
-  public static AppendRequest randAppendRequest(String streamName) {
-    var header = HStreamRecordHeader.newBuilder().setFlag(HStreamRecordHeader.Flag.RAW).build();
-    var payload = ByteString.copyFromUtf8(randText());
-    var r = HStreamRecord.newBuilder().setHeader(header).setPayload(payload).build();
-    return AppendRequest.newBuilder().setStreamName(streamName).addRecords(r).build();
-  }
-
   public static Record buildRecord(byte[] xs) {
     return Record.newBuilder().rawRecord(xs).build();
   }
@@ -96,17 +84,6 @@ public class TestUtils {
     String streamName = "test_stream_" + randText();
     c.createStream(streamName, (short) 3, shardCnt);
     return streamName;
-  }
-
-  public static ListenableFuture<Stream> randStream(HStreamApiGrpc.HStreamApiFutureStub stub) {
-    String streamName = "test_stream_" + randText();
-    var req =
-        Stream.newBuilder()
-            .setStreamName(streamName)
-            .setReplicationFactor(3)
-            .setShardCount(1)
-            .build();
-    return stub.createStream(req);
   }
 
   public static String randSubscriptionWithTimeout(
@@ -251,10 +228,6 @@ public class TestUtils {
     public String zkHost;
 
     public SecurityOptions securityOptions;
-
-    public ServerNode toNode() {
-      return ServerNode.newBuilder().setId(serverId).setHost(address).setPort(port).build();
-    }
 
     public String toString() {
       return " --host "
@@ -915,24 +888,6 @@ public class TestUtils {
       res = res.getCause();
     }
     return res;
-  }
-
-  public static void assertGrpcException(Status expectedStatus, ThrowableRunner runner) {
-    try {
-      runner.run();
-    } catch (Throwable e) {
-      logger.info("e:{}", e.getMessage());
-      var re = getRootCause(e);
-      if (re instanceof StatusRuntimeException) {
-        Assertions.assertEquals(
-            expectedStatus.getCode(), ((StatusRuntimeException) re).getStatus().getCode());
-      } else if (re instanceof StatusException) {
-        Assertions.assertEquals(
-            expectedStatus.getCode(), ((StatusException) re).getStatus().getCode());
-      } else {
-        Assertions.fail("invalid Grpc Exception", e);
-      }
-    }
   }
 
   public static void assertShardId(List<String> ids) {
