@@ -7,7 +7,7 @@ on [Testcontainers](https://www.testcontainers.org/).
 
 Run Single case:
 ```
-./gradlew :app:test  --tests "io.hstream.testing.ClusterTest.testAppendInvalidRecord" --info
+./gradlew :app:test  --tests "io.hstream.testing.Producer.testWriteRaw" --info
 ```
 
 You can use ``--info`` to show info logs.
@@ -15,7 +15,7 @@ You can use ``--info`` to show info logs.
 Run the cases of a Class (or file):
 
 ```
-./gradlew :app:test  --tests "io.hstream.testing.ClusterTest" --info
+./gradlew :app:test  --tests "io.hstream.testing.Producer" --info
 ```
 
 Run the cases by Tag:
@@ -27,23 +27,7 @@ Run the cases by Tag:
 ## How to run the cases using local Java Client
 
 If you have no idea about the signing stuff,
-you can just comment or delete the signing part of
-[client/build.gradle.kts](https://github.com/hstreamdb/hstreamdb-java/blob/main/client/build.gradle.kts) in Java Client:
-
-```
-// signing {
-//     if (project.hasProperty("signing.keyId")) {
-//         sign(publishing.publications["mavenJava"])
-//     } else {
-//         val signingKey = System.getenv("OSSRH_GPG_SECRET_KEY")
-//         val signingPassword = System.getenv("OSSRH_GPG_PASSWORD")
-//         useInMemoryPgpKeys(signingKey, signingPassword)
-//         sign(publishing.publications["mavenJava"])
-//     }
-// }
-```
-
-And run ``./gradlew publishToMavenLocal`` in Java Client Project to publish to local maven repository.
+you can run ``./gradlew publishToMavenLocal -PdisableSigning`` in Java Client Project to publish to local maven repository.
 
 After that, change the repositories part of [app/build.gradle](app/build.gradle) to use local Java Client: 
 
