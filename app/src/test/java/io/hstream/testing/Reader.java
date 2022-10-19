@@ -154,7 +154,7 @@ public class Reader {
             .timeoutMs(100)
             .build();
     System.out.printf("read offset: %s, it's %d record in rids.\n", rids.get(idx), idx);
-    var res = new ArrayList<Record>();
+    var res = new ArrayList<ReceivedRecord>();
     var readCnts = new AtomicInteger(5);
     while (true) {
       var cnt = readCnts.decrementAndGet();
