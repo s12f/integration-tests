@@ -6,6 +6,7 @@ import io.hstream.*;
 import io.hstream.CompressionType;
 import io.hstream.Consumer;
 import io.hstream.Producer;
+import io.hstream.ReceivedRecord;
 import io.hstream.Subscription;
 import io.hstream.impl.DefaultSettings;
 import io.hstream.internal.*;
@@ -935,7 +936,7 @@ public class TestUtils {
     };
   }
 
-  public static List<Record> readStreamShards(
+  public static List<ReceivedRecord> readStreamShards(
       HStreamClient client,
       int ShardCnt,
       String streamName,
@@ -945,7 +946,7 @@ public class TestUtils {
     var shards = client.listShards(streamName);
 
     var terminate = new AtomicBoolean(false);
-    var readRes = new ArrayList<Record>();
+    var readRes = new ArrayList<ReceivedRecord>();
     for (int i = 0; i < ShardCnt; i++) {
       var reader =
           client
