@@ -151,7 +151,7 @@ public class Reader {
             .streamName(streamName)
             .shardId(shard)
             .shardOffset(new StreamShardOffset(rids.get(idx)))
-            .timeoutMs(100)
+            // .timeoutMs(100)
             .build();
     System.out.printf("read offset: %s, it's %d record in rids.\n", rids.get(idx), idx);
     var res = new ArrayList<ReceivedRecord>();

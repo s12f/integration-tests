@@ -31,7 +31,7 @@ jobs:
           ./gradlew spotlessJavaCheck
           ./gradlew spotlessGroovyGradleCheck
 
-      - run: ./gradlew build
+      - run: ./gradlew :app:test --tests "io.hstream.testing.Reader.testReaderReadFromRecordId" --info
 
       - uses: actions/upload-artifact@v2
         if: ${{ success() }} || ${{ failure() }}
