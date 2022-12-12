@@ -81,7 +81,7 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
     Thread.sleep(3000);
 
     Object testInstance = context.getRequiredTestInstance();
-    var initUrl = hServerUrls.stream().reduce((url1, url2) -> url1 + "," + url2).get();
+    var initUrl = "hstream://" + hServerUrls.stream().reduce((url1, url2) -> url1 + "," + url2).get();
     client = makeClient(initUrl, context.getTags());
 
     silence(
