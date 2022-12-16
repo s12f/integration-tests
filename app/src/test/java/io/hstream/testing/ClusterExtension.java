@@ -181,11 +181,11 @@ public class ClusterExtension implements BeforeEachCallback, AfterEachCallback {
     options.dir = getClass().getClassLoader().getResource("security").getPath();
     if (tags.contains("tls")) {
       options.enableTls = true;
-      options.keyPath = "/data/security/server.key.pem";
-      options.certPath = "/data/security/signed.server.cert.pem";
+      options.keyPath = "/data/security/hstream.key";
+      options.certPath = "/data/security/hstream.crt";
     }
     if (tags.contains("tls-authentication")) {
-      options.caPath = "/data/security/ca.cert.pem";
+      options.caPath = "/data/security/root_ca.crt";
     }
     return options;
   }

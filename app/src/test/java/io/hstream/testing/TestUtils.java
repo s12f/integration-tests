@@ -826,14 +826,14 @@ public class TestUtils {
     HStreamClientBuilder builder = HStreamClient.builder().serviceUrl(url);
     var securityPath = TestUtils.class.getClassLoader().getResource("security").getPath();
     if (tags.contains("tls")) {
-      builder = builder.enableTls().tlsCaPath(securityPath + "/ca.cert.pem");
+      builder = builder.enableTls().tlsCaPath(securityPath + "/root_ca.crt");
     }
     if (tags.contains("tls-authentication")) {
       builder =
           builder
               .enableTlsAuthentication()
-              .tlsKeyPath(securityPath + "/role.key-pk8.pem")
-              .tlsCertPath(securityPath + "/signed.role.cert.pem");
+              .tlsKeyPath(securityPath + "/bcc07dd3-31fe-4318-8929-9e228a509034-pk8.key")
+              .tlsCertPath(securityPath + "/bcc07dd3-31fe-4318-8929-9e228a509034.crt");
     }
     return builder.build();
   }
