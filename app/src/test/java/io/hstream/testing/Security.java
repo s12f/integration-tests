@@ -15,6 +15,7 @@ Tag("tls-authentication"): enable tls authentication in servers and client
 @ExtendWith(ClusterExtension.class)
 public class Security {
   String hStreamDBUrl;
+
   public void setHStreamDBUrl(String hStreamDBUrl) {
     this.hStreamDBUrl = hStreamDBUrl;
   }
@@ -35,7 +36,9 @@ public class Security {
   void testUntrustedServer() {
     String caPath = getClass().getClassLoader().getResource("security/root_ca.crt").getPath();
     Assertions.assertThrows(
-        Exception.class, () -> HStreamClient.builder().serviceUrl(hStreamDBUrl).enableTls().tlsCaPath(caPath).build());
+        Exception.class,
+        () ->
+            HStreamClient.builder().serviceUrl(hStreamDBUrl).enableTls().tlsCaPath(caPath).build());
   }
 
   @Test
@@ -45,6 +48,8 @@ public class Security {
   void testUntrustedClient() {
     String caPath = getClass().getClassLoader().getResource("security/root_ca.crt").getPath();
     Assertions.assertThrows(
-        Exception.class, () -> HStreamClient.builder().serviceUrl(hStreamDBUrl).enableTls().tlsCaPath(caPath).build());
+        Exception.class,
+        () ->
+            HStreamClient.builder().serviceUrl(hStreamDBUrl).enableTls().tlsCaPath(caPath).build());
   }
 }

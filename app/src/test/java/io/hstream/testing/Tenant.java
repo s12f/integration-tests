@@ -1,7 +1,6 @@
 package io.hstream.testing;
 
 import io.hstream.HStreamClient;
-import io.hstream.HStreamDBClientException;
 import io.hstream.Subscription;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
@@ -32,14 +31,15 @@ public class Tenant {
   HStreamClient makeClient2() {
     var securityPath = getClass().getResource("/security").getPath();
     return HStreamClient.builder()
-            .serviceUrl(hStreamDBUrl)
-            .enableTls()
-            .tlsCaPath(securityPath + "/root_ca.crt")
-            .enableTlsAuthentication()
-            .tlsKeyPath(securityPath + "/ee10d1ca-cfdd-4fa2-a66d-6ef785a5d29c-pk8.key")
-            .tlsCertPath(securityPath + "/ee10d1ca-cfdd-4fa2-a66d-6ef785a5d29c.crt")
-            .build();
+        .serviceUrl(hStreamDBUrl)
+        .enableTls()
+        .tlsCaPath(securityPath + "/root_ca.crt")
+        .enableTlsAuthentication()
+        .tlsKeyPath(securityPath + "/ee10d1ca-cfdd-4fa2-a66d-6ef785a5d29c-pk8.key")
+        .tlsCertPath(securityPath + "/ee10d1ca-cfdd-4fa2-a66d-6ef785a5d29c.crt")
+        .build();
   }
+
   @Test
   @Timeout(20)
   @Tag("tls")
@@ -72,14 +72,8 @@ public class Tenant {
     var client2 = makeClient2();
     client.createStream("stream01");
     client2.createStream("stream01");
-    var sub01 = Subscription.newBuilder()
-            .stream("stream01")
-            .subscription("sub01")
-            .build();
-    var sub02 = Subscription.newBuilder()
-            .stream("stream01")
-            .subscription("sub02")
-            .build();
+    var sub01 = Subscription.newBuilder().stream("stream01").subscription("sub01").build();
+    var sub02 = Subscription.newBuilder().stream("stream01").subscription("sub02").build();
 
     // create
     client.createSubscription(sub01);
@@ -92,7 +86,8 @@ public class Tenant {
 
     // delete
     client.deleteSubscription(sub01.getSubscriptionId());
-    Assertions.assertThrows(Exception.class, () -> client.deleteSubscription(sub02.getSubscriptionId()));
+    Assertions.assertThrows(
+        Exception.class, () -> client.deleteSubscription(sub02.getSubscriptionId()));
     client2.deleteSubscription(sub02.getSubscriptionId());
   }
 
