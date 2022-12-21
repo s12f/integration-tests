@@ -4,6 +4,7 @@ import io.hstream.HStreamClient;
 import io.hstream.Subscription;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 Tag("tls"): enable tls in servers and client
 Tag("tls-authentication"): enable tls authentication in servers and client
  */
+@Disabled
 @Slf4j
 @Tag("basicTest")
 @ExtendWith(ClusterExtension.class)
