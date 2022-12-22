@@ -55,7 +55,7 @@ public class Tenant {
     Assertions.assertEquals(1, streams1.size());
     Assertions.assertEquals("stream01", streams1.get(0).getStreamName());
 
-    var streams2 = client.listStreams();
+    var streams2 = client2.listStreams();
     Assertions.assertEquals(2, streams2.size());
 
     client.deleteStream("stream01");
