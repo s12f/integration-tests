@@ -6,6 +6,7 @@ import io.hstream.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -122,6 +123,34 @@ public class Reader {
 
     System.out.println("length of ReadRes = " + readRes.size());
     Assertions.assertEquals(threadCount * count, readRes.size());
+  }
+
+  @Test
+  void testReaderWithMultipleBatch() throws Exception {
+    int count = 10;
+    String streamName = randStream(client, 1);
+    for (int i = 0; i < count; i++) {
+      var producer = client.newBufferedProducer().stream(streamName).build();
+      producer.write(Record.newBuilder().rawRecord(new byte[100]).build()).join();
+    }
+    AtomicInteger received = new AtomicInteger();
+    var sub = randSubscription(client, streamName);
+    consume(client, sub, 10, receivedRawRecord -> received.incrementAndGet() != count);
+    // confirmed that writing is ok
+    logger.info("received:{} from consumer", received.get());
+
+    // test reader
+    var shards = client.listShards(streamName);
+    Assertions.assertEquals(1, shards.size());
+    var reader = client.newReader()
+            .readerId("reader_" + UUID.randomUUID())
+            .timeoutMs(1000)
+            .shardId(shards.get(0).getShardId())
+            .streamName(streamName)
+            .build();
+    var result = reader.read(100).join();
+    logger.info("result:{}", result.size());
+    Assertions.assertEquals(10, result.size());
   }
 
   @Test
