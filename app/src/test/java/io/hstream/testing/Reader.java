@@ -142,7 +142,9 @@ public class Reader {
     // test reader
     var shards = client.listShards(streamName);
     Assertions.assertEquals(1, shards.size());
-    var reader = client.newReader()
+    var reader =
+        client
+            .newReader()
             .readerId("reader_" + UUID.randomUUID())
             .timeoutMs(1000)
             .shardId(shards.get(0).getShardId())
