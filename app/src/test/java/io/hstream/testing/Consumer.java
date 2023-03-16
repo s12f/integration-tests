@@ -126,7 +126,7 @@ public class Consumer {
   @Timeout(60)
   void testCreateConsumerWithoutSubscriptionNameShouldFail() {
     Assertions.assertThrows(
-        NullPointerException.class, () -> client.newConsumer().name("test-consumer").build());
+        IllegalArgumentException.class, () -> client.newConsumer().name("test-consumer").build());
   }
 
   @Test
