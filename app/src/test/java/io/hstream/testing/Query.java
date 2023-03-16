@@ -39,7 +39,7 @@ public class Query {
     String qid = simpleQuery(client, sink, "select * from " + source + " ;");
 
     var qids =
-        client.listQueries().stream().map(io.hstream.Query::getId).collect(Collectors.toList());
+        client.listQueries().stream().map(io.hstream.Query::getName).collect(Collectors.toList());
     Assertions.assertTrue(qids.contains(qid));
     String subSs = randSubscription(client, source);
     String subSk = randSubscription(client, sink);

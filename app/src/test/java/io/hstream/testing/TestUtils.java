@@ -130,9 +130,10 @@ public class TestUtils {
   }
 
   public static String simpleQuery(HStreamClient c, String streamName, String sql) {
-    var query = c.createQuery("CREATE STREAM " + streamName + " AS " + sql);
+    var queryName = "query_" + UUID.randomUUID().toString();
+    var query = c.createQuery(queryName, "CREATE STREAM " + streamName + " AS " + sql);
     logger.info(query.getQueryText() + " has been created");
-    return query.getId();
+    return query.getName();
   }
   // -----------------------------------------------------------------------------------------------
 
