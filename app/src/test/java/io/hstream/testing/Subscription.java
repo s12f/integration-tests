@@ -5,6 +5,7 @@ import static io.hstream.testing.TestUtils.*;
 import io.hstream.HStreamClient;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Tag;
@@ -13,6 +14,8 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.swing.text.Utilities;
 
 @Tag("basicTest")
 @ExtendWith(ClusterExtension.class)
@@ -38,6 +41,34 @@ public class Subscription {
             .sorted()
             .collect(Collectors.toList());
     Assertions.assertEquals(subscriptions.stream().sorted().collect(Collectors.toList()), res);
+  }
+
+  @Test
+  @Timeout(60)
+  void testGetSubscription() {
+    String streamName = randStream(client);
+    String subName = randSubscription(client, streamName);
+    var sub = client.getSubscription(subName);
+    Assertions.assertEquals(subName, sub.getSubscription().getSubscriptionId());
+    Assertions.assertEquals(streamName, sub.getSubscription().getStreamName());
+    Assertions.assertNotNull(sub.getOffsets());
+  }
+
+  @Test
+  @Timeout(60)
+  void testGetSubscriptionWithConsumer() throws Exception {
+    String streamName = randStream(client);
+    String subName = randSubscription(client, streamName);
+    var producer = client.newBufferedProducer().stream(streamName).build();
+    // write and consume some data
+    TestUtils.produce(producer, 100, 10);
+    var count = new AtomicInteger();
+    TestUtils.consume(client, subName, 10, receivedRawRecord -> count.incrementAndGet() < 10);
+
+    var sub = client.getSubscription(subName);
+    Assertions.assertEquals(subName, sub.getSubscription().getSubscriptionId());
+    Assertions.assertEquals(streamName, sub.getSubscription().getStreamName());
+    Assertions.assertFalse(sub.getOffsets().isEmpty());
   }
 
   @Test
