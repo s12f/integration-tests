@@ -15,8 +15,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.text.Utilities;
-
 @Tag("basicTest")
 @ExtendWith(ClusterExtension.class)
 public class Subscription {
