@@ -202,4 +202,30 @@ public class Subscription {
     Assertions.assertEquals(10, res2.size());
     Thread.sleep(100);
   }
+
+  @Test
+  @Timeout(10)
+  void testListEmptyConsumers() {
+    var stream = randStream(client);
+    var sub = randSubscription(client, stream);
+    var result = client.listConsumers(sub);
+    Assertions.assertTrue(result.isEmpty());
+  }
+
+  @Test
+  @Timeout(10)
+  void testListConsumers() throws Exception {
+    var stream = randStream(client);
+    var sub = randSubscription(client, stream);
+    var consumer =
+        client
+            .newConsumer()
+            .subscription(sub)
+            .rawRecordReceiver((receivedRawRecord, responder) -> {})
+            .build();
+    consumer.startAsync().awaitRunning();
+    Thread.sleep(1000);
+    var result = client.listConsumers(sub);
+    Assertions.assertEquals(1, result.size());
+  }
 }
